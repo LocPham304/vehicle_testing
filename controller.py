@@ -1,0 +1,182 @@
+"""Motor control independent of terminal input and command parsing."""
+
+import logging
+import math
+import time
+from collections.abc import Callable, Mapping
+from typing import Protocol
+
+from .config import (
+    DEFAULT_SPEED,
+    DIRECTION_CHANGE_DELAY_SECONDS,
+    I2C_ADDRESS,
+    MOTORS,
+    PWM_FREQUENCY_HZ,
+    MotorPins,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+class ChannelOutput(Protocol):
+    """Boundary implemented by the hardware and simulation outputs."""
+
+    def set_duty(self, channel: int, duty: int) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class PCA9685Output:
+    """Own the I2C connection and Adafruit PCA9685 instance."""
+
+    def __init__(self) -> None:
+        # Simulation and imports on a PC must not require hardware libraries.
+        try:
+            import board
+            import busio
+            from adafruit_pca9685 import PCA9685
+        except ImportError as error:
+            raise RuntimeError(
+                "Thieu thu vien phan cung. Cai requirements.txt tren Raspberry Pi "
+                "hoac chay voi --dry-run tren may tinh."
+            ) from error
+
+        self._i2c = busio.I2C(board.SCL, board.SDA)
+        self._pca = None
+        try:
+            self._pca = PCA9685(self._i2c, address=I2C_ADDRESS)
+            self._pca.frequency = PWM_FREQUENCY_HZ
+        except BaseException:
+            try:
+                self.close()
+            except Exception:
+                logger.exception("Khong the giai phong I2C sau loi khoi tao.")
+            raise
+
+    def set_duty(self, channel: int, duty: int) -> None:
+        self._pca.channels[channel].duty_cycle = duty
+
+    def close(self) -> None:
+        try:
+            if self._pca is not None:
+                self._pca.deinit()
+        finally:
+            self._i2c.deinit()
+
+
+class DryRunOutput:
+    """Log output requests without opening I2C or controlling any device."""
+
+    def set_duty(self, channel: int, duty: int) -> None:
+        logger.debug("[MO PHONG] CH%02d duty=%d", channel, duty)
+
+    def close(self) -> None:
+        logger.debug("[MO PHONG] Dong ket noi.")
+
+
+def validate_duration(seconds: float) -> None:
+    """Accept any positive finite number of seconds without an application cap."""
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("Thoi gian phai la so huu han lon hon 0, don vi giay.")
+
+
+def validate_motion(direction: str, seconds: float, speed: float) -> None:
+    """Reject invalid commands instead of silently turning speed=5 into 100%."""
+    if direction not in ("forward", "backward"):
+        raise ValueError("Chieu chay phai la forward hoac backward.")
+    validate_duration(seconds)
+    if not math.isfinite(speed) or not 0 < speed <= 1:
+        raise ValueError("PWM phai nam trong khoang (0, 1], vi du 0.5 = 50%.")
+
+
+class MotorController:
+    """Drive all configured wheels for a duration, then request a stop."""
+
+    def __init__(
+        self,
+        output: ChannelOutput,
+        motors: Mapping[str, MotorPins] = MOTORS,
+        sleeper: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._motors = dict(motors)
+        channels = [
+            channel for pins in self._motors.values()
+            for channel in (pins.pwm, pins.in1, pins.in2)
+        ]
+        if not channels or any(type(ch) is not int or not 0 <= ch <= 15 for ch in channels):
+            raise ValueError("Cau hinh motor phai co cac kenh nguyen tu 0 den 15.")
+        if len(channels) != len(set(channels)):
+            raise ValueError("Cac motor khong duoc dung trung kenh PWM/IN1/IN2.")
+        self._output = output
+        self._sleep = sleeper
+        self._closed = False
+
+    def _set_channel(self, channel: int, value: float) -> None:
+        self._output.set_duty(channel, int(value * 65535))
+
+    def stop(self) -> None:
+        """Try every motor channel even if one I2C write fails."""
+        if self._closed:
+            return
+        # Disable every PWM before clearing direction inputs.
+        channels = [pins.pwm for pins in self._motors.values()]
+        channels += [ch for pins in self._motors.values() for ch in (pins.in1, pins.in2)]
+        first_error = None
+        for channel in channels:
+            try:
+                self._set_channel(channel, 0)
+            except Exception as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+
+    def pause(self, seconds: float) -> None:
+        """Keep motor outputs off during a timed pause, then allow continuation."""
+        validate_duration(seconds)
+        if self._closed:
+            raise RuntimeError("Bo dieu khien da dong.")
+        try:
+            self.stop()
+            logger.info("NGUNG trong %g giay", seconds)
+            self._sleep(seconds)
+        finally:
+            self.stop()
+
+    def move(self, direction: str, seconds: float, speed: float = DEFAULT_SPEED) -> None:
+        validate_motion(direction, seconds, speed)
+        if self._closed:
+            raise RuntimeError("Bo dieu khien da dong.")
+
+        try:
+            self.stop()
+            self._sleep(DIRECTION_CHANGE_DELAY_SECONDS)
+
+            # Set the whole group's direction before enabling any PWM.
+            for name, pins in self._motors.items():
+                forward = (direction == "forward") != pins.inverted
+                self._set_channel(pins.in1, 1.0 if forward else 0.0)
+                self._set_channel(pins.in2, 0.0 if forward else 1.0)
+                logger.debug("%s: IN1=%d IN2=%d", name, int(forward), int(not forward))
+
+            self._sleep(DIRECTION_CHANGE_DELAY_SECONDS)
+            for pins in self._motors.values():
+                self._set_channel(pins.pwm, speed)
+
+            label = "TIEN" if direction == "forward" else "LUI"
+            logger.info("%s trong %g giay, PWM %.0f%%", label, seconds, speed * 100)
+            self._sleep(seconds)
+        finally:
+            # Also covers partial startup and Ctrl+C during the timed wait.
+            self.stop()
+        logger.info("Da gui lenh dung ca 4 motor.")
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            self.stop()
+        finally:
+            self._closed = True
+            self._output.close()
