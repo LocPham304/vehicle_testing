@@ -10,9 +10,9 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from vehicle_testing.config import DEFAULT_SPEED, TURN_SPEED
+from vehicle_testing.config import DEFAULT_SPEED, TURN_SPEED, SERVO_BCM_PIN, CLAW_BCM_PIN
 from vehicle_testing.hand import (
-    DryRunServoOutput, GPIOServoOutput, HandController,
+    DryRunServoOutput, GPIOServoOutput, HandController, ClawController,
     validate_hand_angle, validate_hand_step,
 )
 from vehicle_testing.controller import (
@@ -38,6 +38,8 @@ TIMED_COMMANDS = {
 TIMED_LABELS = {action: command for command, action in TIMED_COMMANDS.items()}
 HAND_COMMANDS = {"nang": "hand_up", "ha": "hand_down", "tay_goc": "hand_angle"}
 HAND_LABELS = {action: command for command, action in HAND_COMMANDS.items()}
+CLAW_COMMANDS = {"cang_goc": "claw_angle", "mo_cang": "claw_open", "dong_cang": "claw_grip"}
+CLAW_LABELS = {action: command for command, action in CLAW_COMMANDS.items()}
 HELP = f"""Lenh:
   tien <giay> [PWM]   Them lenh tien, vi du: tien 2
   lui  <giay> [PWM]   Them lenh lui, vi du: lui 1 0.3
@@ -52,6 +54,9 @@ HELP = f"""Lenh:
   tay_goc <do>       Dat goc tay tuyet doi 0..80, vi du: tay_goc 40
   nang <do>          Nang tay: giam goc tuong doi, vi du: nang 10
   ha <do>            Ha tay: tang goc tuong doi, vi du: ha 10
+  cang_goc <do>      Dat goc cang tuyet doi 0..80, vi du: cang_goc 40
+  mo_cang <do>       Mo cang: giam goc tuong doi, vi du: mo_cang 10
+  dong_cang <do>     Khep cang: tang goc tuong doi, vi du: dong_cang 10
   ngung <giay>       Them khoang nghi, vi du: ngung 0.5
   chay               Thuc hien kich ban da nhap
   dung               Gui lenh dung va huy kich ban dang soan
@@ -59,7 +64,8 @@ HELP = f"""Lenh:
 Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
 Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
-Chay tay_goc truoc nang/ha trong moi phien. Tay dung GPIO BCM 19, gioi han 0..80 do.
+Chay tay_goc truoc nang/ha. Nang/ha dung GPIO BCM {SERVO_BCM_PIN}, gioi han 0..80 do.
+Chay cang_goc truoc mo_cang/dong_cang. Cang dung GPIO BCM {CLAW_BCM_PIN}, gioi han 0..80 do.
 Tay giu PWM sau moi lenh; thoat/Ctrl+C se tat PWM servo.
 Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
 Chay xong thi xoa danh sach. Co the nhap kich ban moi.
@@ -73,16 +79,16 @@ def parse_command(line: str) -> tuple[str, float, float]:
     controls = {"chay": "run", "dung": "stop", "thoat": "exit"}
     if len(parts) == 1 and parts[0] in controls:
         return controls[parts[0]], 0.0, 0.0
-    if len(parts) == 2 and parts[0] in HAND_COMMANDS:
+    if len(parts) == 2 and parts[0] in (HAND_COMMANDS | CLAW_COMMANDS):
         try:
             angle = float(parts[1])
         except ValueError as error:
             raise ValueError("Goc tay phai la so, vi du: nang 10 hoac tay_goc 40.") from error
-        if parts[0] == "tay_goc":
+        if parts[0] in ("tay_goc", "cang_goc"):
             validate_hand_angle(angle)
         else:
             validate_hand_step(angle)
-        return HAND_COMMANDS[parts[0]], angle, 0.0
+        return (HAND_COMMANDS | CLAW_COMMANDS)[parts[0]], angle, 0.0
     if len(parts) == 2 and parts[0] == "ngung":
         try:
             seconds = float(parts[1])
@@ -99,7 +105,7 @@ def parse_command(line: str) -> tuple[str, float, float]:
         validate_turn(direction, angle)
         return direction, angle, TURN_SPEED
     if len(parts) not in (2, 3) or parts[0] not in TIMED_COMMANDS:
-        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha/tay_goc <do>, ngung <giay>, chay, dung, hoac thoat.")
+        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha/tay_goc/mo_cang/dong_cang/cang_goc <do>, ngung <giay>, chay, dung, hoac thoat.")
     try:
         seconds = float(parts[1])
         speed = float(parts[2]) if len(parts) == 3 else DEFAULT_SPEED
@@ -116,7 +122,8 @@ def parse_command(line: str) -> tuple[str, float, float]:
     return direction, seconds, speed
 
 
-def run_session(controller: MotorController, hand: HandController | None = None) -> None:
+def run_session(controller: MotorController, hand: HandController | None = None,
+                claw: ClawController | None = None) -> None:
     print(HELP)
     pending: list[tuple[str, float, float]] = []
     while True:
@@ -146,7 +153,17 @@ def run_session(controller: MotorController, hand: HandController | None = None)
             logger.info("Bat dau kich ban: %d lenh.", len(script))
             for index, (step, amount, pwm) in enumerate(script, start=1):
                 logger.info("Thuc hien lenh %d/%d.", index, len(script))
-                if step in HAND_LABELS:
+                if step in CLAW_LABELS:
+                    controller.stop()
+                    if claw is None:
+                        raise RuntimeError("Chua cau hinh bo dieu khien cang.")
+                    if step == "claw_angle":
+                        claw.set_angle(amount)
+                    elif step == "claw_open":
+                        claw.open(amount)
+                    else:
+                        claw.grip(amount)
+                elif step in HAND_LABELS:
                     controller.stop()
                     if hand is None:
                         raise RuntimeError("Chua cau hinh bo dieu khien tay.")
@@ -177,9 +194,9 @@ def run_session(controller: MotorController, hand: HandController | None = None)
             logger.info("Da hoan tat kich ban. Co the nhap kich ban moi.")
         else:
             pending.append((action, value, speed))
-            if action in HAND_LABELS:
+            if action in (HAND_LABELS | CLAW_LABELS):
                 logger.info("Da luu lenh #%d: %s %g do. Go chay de bat dau.",
-                            len(pending), HAND_LABELS[action], value)
+                            len(pending), (HAND_LABELS | CLAW_LABELS)[action], value)
             elif action == "pause":
                 logger.info("Da luu lenh #%d: ngung %g giay. Go chay de bat dau.", len(pending), value)
             elif action in ("left", "right"):
@@ -209,14 +226,17 @@ def main(argv: list[str] | None = None) -> int:
     controller = None
     output = None
     hand = None
+    claw = None
     result = 0
     try:
         logger.info("MO PHONG - khong dieu khien phan cung" if args.dry_run else "CHE DO PHAN CUNG")
         output = DryRunOutput() if args.dry_run else PCA9685Output()
         controller = MotorController(output)
         hand = HandController(DryRunServoOutput if args.dry_run else GPIOServoOutput)
+        claw_output = DryRunServoOutput if args.dry_run else GPIOServoOutput
+        claw = ClawController(lambda: claw_output(pin=CLAW_BCM_PIN))
         controller.stop()
-        run_session(controller, hand)
+        run_session(controller, hand, claw)
     except KeyboardInterrupt:
         logger.info("Nhan Ctrl+C, dang gui lenh dung...")
         result = 130
@@ -238,15 +258,16 @@ def main(argv: list[str] | None = None) -> int:
                 result = 1
         finally:
             # Always attempt servo cleanup, even if motor cleanup is interrupted.
-            try:
-                if hand is not None:
-                    hand.close()
-            except KeyboardInterrupt:
-                logger.info("Ngat khi giai phong servo.")
-                result = 130
-            except Exception as error:
-                logger.error("Loi khi tat/giai phong servo: %s", error)
-                result = 1
+            for servo in (hand, claw):
+                try:
+                    if servo is not None:
+                        servo.close()
+                except KeyboardInterrupt:
+                    logger.info("Ngat khi giai phong servo; tiep tuc don cac servo con lai.")
+                    result = 130
+                except Exception as error:
+                    logger.error("Loi khi tat/giai phong servo: %s", error)
+                    result = 1
     return result
 
 

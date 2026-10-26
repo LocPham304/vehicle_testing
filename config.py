@@ -18,13 +18,19 @@ TURN_SPEED = 0.5
 TURN_LEFT_SECONDS_PER_DEGREE = 0.0089
 TURN_RIGHT_SECONDS_PER_DEGREE = 0.0089
 
-# Arm servo on Raspberry Pi GPIO, independent of the motor PCA9685 frequency.
-SERVO_BCM_PIN = 19
+# Confirmed by the user's probe: BCM 18 lifts the arm; BCM 12 opens the claw.
+# These GPIO outputs are independent of the motor PCA9685 frequency.
+SERVO_BCM_PIN = 18
+CLAW_BCM_PIN = 12
 SERVO_PWM_FREQUENCY_HZ = 50
 SERVO_MIN_ANGLE = 0.0
 SERVO_MAX_ANGLE = 80.0
 # Wait between commands; this is not a measurement of the arm's travel time.
 SERVO_MOVE_WAIT_SECONDS = 1.0
+# Claw movement between known positions: 1 degree every 20 ms (~50 deg/s).
+# The first absolute reference command cannot ramp from an unknown position.
+CLAW_STEP_DEGREES = 1.0
+CLAW_STEP_INTERVAL_SECONDS = 0.02
 
 
 @dataclass(frozen=True)

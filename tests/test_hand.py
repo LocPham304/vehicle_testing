@@ -126,8 +126,8 @@ class GPIOOutputTests(unittest.TestCase):
     def test_pin_frequency_and_duty_keep_180_degree_electrical_scale(self):
         output = self.open()
         self.gpio.setmode.assert_called_once_with(11)
-        self.gpio.setup.assert_called_once_with(19, 0)
-        self.gpio.PWM.assert_called_once_with(19, 50)
+        self.gpio.setup.assert_called_once_with(18, 0)
+        self.gpio.PWM.assert_called_once_with(18, 50)
         self.pwm.start.assert_called_once_with(0)
         output.set_angle(0)
         self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 2.5)
@@ -137,7 +137,7 @@ class GPIOOutputTests(unittest.TestCase):
         output.close()
         self.assertEqual(self.pwm.ChangeDutyCycle.call_args.args, (0,))
         self.pwm.stop.assert_called_once()
-        self.gpio.cleanup.assert_called_once_with(19)
+        self.gpio.cleanup.assert_called_once_with(18)
 
     def test_invalid_angle_does_not_change_pwm(self):
         output = self.open()
@@ -152,7 +152,7 @@ class GPIOOutputTests(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "start failed"):
             self.open()
         self.pwm.stop.assert_called_once()
-        self.gpio.cleanup.assert_called_once_with(19)
+        self.gpio.cleanup.assert_called_once_with(18)
 
     def test_close_still_cleans_pin_when_zero_duty_fails(self):
         output = self.open()
@@ -160,7 +160,7 @@ class GPIOOutputTests(unittest.TestCase):
         with self.assertRaises(OSError):
             output.close()
         self.pwm.stop.assert_called_once()
-        self.gpio.cleanup.assert_called_once_with(19)
+        self.gpio.cleanup.assert_called_once_with(18)
 
 
 class HandSessionTests(unittest.TestCase):

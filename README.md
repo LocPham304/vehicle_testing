@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng servo riêng trên GPIO BCM 19, giới hạn góc 0–80°.
+Tay nâng/hạ dùng GPIO BCM 18, càng dùng GPIO BCM 12, giới hạn góc lệnh 0–80°.
 
 ## Cấu trúc
 
@@ -13,13 +13,14 @@ Tay nâng/hạ dùng servo riêng trên GPIO BCM 19, giới hạn góc 0–80°.
 | --- | --- |
 | `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
-| `hand.py` | Điều khiển servo nâng/hạ qua GPIO BCM 19, giới hạn góc 0–80° |
+| `hand.py` | Điều khiển nâng/hạ BCM 18 và càng BCM 12, giới hạn góc 0–80° |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
 | `tests/test_strafing.py` | Kiểm tra chiều chạy ngang, PWM, xếp lệnh và dừng khi lỗi hoặc bị ngắt |
 | `tests/test_diagonal.py` | Kiểm tra bốn hướng chéo: cặp bánh, chiều quay, bánh tắt, xếp lệnh và dừng |
 | `tests/test_hand.py` | Kiểm tra góc tương đối, giới hạn, GPIO, kịch bản nâng/hạ và giải phóng khi lỗi |
+| `tests/test_claw.py` | Kiểm tra hai chân servo, chiều mở/khép càng, chuyển góc từng bước và dọn cả hai servo |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
@@ -124,11 +125,12 @@ Lỗi khi thực hiện một lệnh sẽ hủy các lệnh còn lại và thoá
 Ctrl+C trả mã thoát 130; lỗi phần
 cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
 
-## Tay nâng/hạ qua GPIO BCM 19
+## Tay nâng/hạ qua GPIO BCM 18
 
-Servo nối vào **GPIO BCM 19** trên Raspberry Pi, dùng `RPi.GPIO` ở **50 Hz**.
+Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng `RPi.GPIO` ở **50 Hz**.
+Chân này đã được người dùng xác nhận bằng phép thử `probe_servo.py --pin 18`.
 Tần số này độc lập với PWM 1000 Hz của PCA9685 điều khiển bánh xe.
-Không chạy đồng thời với `test_servo.py` hoặc chương trình khác đang dùng GPIO 19.
+Không chạy đồng thời với chương trình khác đang dùng GPIO 18 hoặc GPIO 12.
 Thư viện GPIO có trong `requirements.txt` cho Linux; `--dry-run` không nhập hay mở GPIO.
 
 ```text
@@ -162,7 +164,7 @@ ban đầu, chưa đo thời gian cơ cấu thực sự tới đích.
 
 PWM servo được giữ sau mỗi lệnh, kể cả khi chạy bánh, `ngung` hoặc `dung`,
 để tiếp tục yêu cầu giữ vị trí. `dung` vẫn hủy kịch bản đang soạn.
-Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng GPIO 19;
+Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng từng GPIO servo đã mở;
 sau đó servo không còn được yêu cầu giữ lực và tay có thể hạ theo tải.
 
 Thử luồng trên máy tính trước:
@@ -174,27 +176,57 @@ python vehicle_testing/main.py --dry-run
 Sau khi kiểm tra lệnh, dùng cách chạy trên Raspberry Pi ở phần trên để chạy thật.
 Giới hạn góc và chiều nâng/hạ vẫn cần xác nhận với cơ cấu thực tế.
 
+### Mở/khép càng qua GPIO BCM 12
+
+Servo càng 12G dùng **GPIO BCM 12**, đã được người dùng xác nhận bằng probe.
+Người dùng cũng xác nhận **giảm góc thì mở càng**, tăng góc thì khép càng.
+
+```text
+cang_goc 40
+mo_cang 10
+dong_cang 10
+chay
+```
+
+Góc yêu cầu là **40° → 30° → 40°**. `cang_goc` đặt góc tuyệt đối;
+`mo_cang`/`dong_cang` nhận số độ tương đối dương, không nhận PWM hoặc giây.
+Phải chạy `cang_goc` trước các lệnh tương đối trong mỗi phiên. Mốc góc càng
+độc lập với `tay_goc` của nâng/hạ; có thể xen kẽ hai nhóm lệnh trong cùng kịch bản.
+Giới hạn lệnh ban đầu giữ **0–80°** theo `servo2.limit()` trong firmware cũ,
+chưa phải giới hạn cơ khí đã hiệu chỉnh trên càng. Các thử nghiệm người dùng
+đã xác nhận ở khoảng 30–40°; tiếp tục thử trong khoảng này trước.
+
+Để giảm cú giật do đổi ngay góc đích, càng chuyển từng bước **1° mỗi 20 ms**
+giữa các góc đã biết. Cấu hình nằm ở `CLAW_STEP_DEGREES` và
+`CLAW_STEP_INTERVAL_SECONDS`; sau đó chờ thêm `SERVO_MOVE_WAIT_SECONDS`.
+Lệnh mốc đầu tiên gửi thẳng góc yêu cầu vì chưa biết vị trí xuất phát.
+Chia bước không xác nhận đã hết giật thực tế; nếu vẫn giật/rung thì cần
+kiểm tra thêm nguồn và tín hiệu PWM. `probe_servo.py` vẫn gửi góc trực tiếp
+để chẩn đoán, không dùng chuyển góc từng bước này.
+
 ### Chẩn đoán cổng servo chưa xác định GPIO
 
 Tên in trên bo như PWM4 hoặc S1 cần được đối chiếu với đường mạch; số cổng
 không tự trở thành số BCM. Các ví dụ cũ trong repo nhắc tới BCM 12/13/18/19,
 nhưng chưa có sơ đồ xác nhận từng cổng trên bo Edison Academy Rev1.1.
+Trên xe hiện tại, phép thử thực tế đã xác nhận **nâng/hạ = BCM 18**,
+**càng = BCM 12**; hai giá trị này đã được áp dụng trong `config.py`.
 
 `probe_servo.py` thử riêng **một GPIO được chọn**, không mở PCA9685 hoặc motor.
 Thoát `main.py` và các chương trình servo khác trước khi thử thật. Chạy từ
 thư mục `vehicle_testing` trên Pi:
 
 ```sh
-python probe_servo.py --pin 19
+python probe_servo.py --pin 18
 ```
 
 Phép thử chỉ yêu cầu **40° → 30° → 40°**, mỗi góc giữ hai giây, rồi tắt PWM
 và giải phóng riêng GPIO đã chọn. Sau đó tay không còn được yêu cầu giữ lực.
 Quan sát xem servo nào di chuyển; log không đo được chuyển động thực tế.
-Nếu BCM 19 không điều khiển được servo, có thể thử từng ứng viên `12`, `13`,
-`18` bằng các lần chạy riêng. Đây là tìm chân bằng quan sát, chưa phải ánh xạ
-đã xác nhận của bo; nếu các chân đều không có chuyển động thì cần kiểm tra
-nguồn VCC/GND và tín hiệu tại giắc bằng thiết bị đo.
+File hỗ trợ các ứng viên `12`, `13`, `18`, `19` để tìm chân trên xe chưa xác định.
+Với xe hiện tại, đã xác nhận **18 nâng/hạ, 12 càng**; không cần dò lại.
+Nếu các chân đều không có chuyển động thì cần kiểm tra nguồn VCC/GND
+và tín hiệu tại giắc bằng thiết bị đo.
 Chỉ thử khi cơ cấu cho phép chuyển động trong khoảng 30–40°.
 Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và không chờ.
 
