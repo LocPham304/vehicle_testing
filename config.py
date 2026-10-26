@@ -18,6 +18,13 @@ TURN_SPEED = 0.5
 TURN_LEFT_SECONDS_PER_DEGREE = 0.0179
 TURN_RIGHT_SECONDS_PER_DEGREE = 0.0179
 
+# Sideways PWM trim only. Neutral defaults; these are NOT measured corrections.
+# Actual wheel PWM = command PWM * gain. Use a finite number in (0, 1].
+# Reduce a stronger wheel rather than exceeding the requested command PWM.
+# Tune left/right independently on the floor at a fixed command PWM.
+STRAFE_LEFT_GAINS = {"FR": 1.0, "FL": 1.0, "RL": 1.0, "RR": 1.0}
+STRAFE_RIGHT_GAINS = {"FR": 1.0, "FL": 1.0, "RL": 1.0, "RR": 1.0}
+
 
 @dataclass(frozen=True)
 class MotorPins:

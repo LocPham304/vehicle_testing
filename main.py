@@ -40,6 +40,7 @@ HELP = f"""Lenh:
   dung               Gui lenh dung va huy kich ban dang soan
   thoat              Huy kich ban dang soan, dung va thoat
 Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
+Chay ngang: PWM tung banh = PWM lenh x he so STRAFE_*_GAINS trong config.py.
 Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
 Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
