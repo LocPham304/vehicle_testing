@@ -125,7 +125,7 @@ class StrafingCommandTests(unittest.TestCase):
                     if interrupt and seconds == 2:
                         raise KeyboardInterrupt
                 motor = controller.MotorController(output, sleeper=observe)
-                lines = iter(["tien 1", "ngang_trai 2", "ngung 0.5", "ngang_phai 3 0.3",
+                lines = iter(["tien 1", "ngang_trai 2", "ngung 0.7", "ngang_phai 3 0.3",
                               "trai 15", "lui 4", "chay", "chay", "thoat"])
                 def read_line(prompt):
                     line = next(lines)

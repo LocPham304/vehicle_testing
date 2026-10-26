@@ -47,7 +47,8 @@ class TurningTests(unittest.TestCase):
             motor.turn_left(15.5)
             motor.turn_right(15.5)
         self.assertEqual(len(waits), 6)
-        for actual, expected in zip(waits, [0.003, 0.003, 0.31, 0.003, 0.003, 0.465]):
+        delay = config.DIRECTION_CHANGE_DELAY_SECONDS
+        for actual, expected in zip(waits, [delay, delay, 0.31, delay, delay, 0.465]):
             self.assertAlmostEqual(actual, expected)
 
     def test_turn_respects_individual_motor_inversion(self):
@@ -136,7 +137,7 @@ class TurningCommandTests(unittest.TestCase):
             if seconds != config.DIRECTION_CHANGE_DELAY_SECONDS:
                 states.append((seconds, tuple(output.values[p.in1] for p in config.MOTORS.values())))
         motor = controller.MotorController(output, sleeper=observe)
-        lines = ["tien 1", "trai 90", "ngung 0.5", "phai 15", "lui 2", "chay", "chay", "thoat"]
+        lines = ["tien 1", "trai 90", "ngung 0.7", "phai 15", "lui 2", "chay", "chay", "thoat"]
         def read_line(prompt):
             line = lines.pop(0)
             if line not in ("chay", "thoat"):
@@ -150,7 +151,7 @@ class TurningCommandTests(unittest.TestCase):
             (0, 0, 0, 0), (0, 65535, 65535, 0), (0, 0, 0, 0),
         ])
         expected_times = [1, 90 * config.TURN_LEFT_SECONDS_PER_DEGREE,
-                          0.5, 15 * config.TURN_RIGHT_SECONDS_PER_DEGREE, 2]
+                          0.7, 15 * config.TURN_RIGHT_SECONDS_PER_DEGREE, 2]
         for actual, expected in zip([s[0] for s in states], expected_times):
             self.assertAlmostEqual(actual, expected)
         self.assertTrue(all(v == 0 for v in output.values.values()))

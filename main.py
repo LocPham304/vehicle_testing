@@ -17,6 +17,7 @@ from vehicle_testing.controller import (
     PCA9685Output,
     validate_duration,
     validate_motion,
+    validate_speed,
     validate_strafe,
     validate_turn,
 )
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 TIMED_COMMANDS = {
     "tien": "forward", "lui": "backward",
     "ngang_trai": "strafe_left", "ngang_phai": "strafe_right",
+    "cheo_tren_trai": "forward_left",
 }
 TIMED_LABELS = {action: command for command, action in TIMED_COMMANDS.items()}
 HELP = f"""Lenh:
@@ -33,6 +35,7 @@ HELP = f"""Lenh:
   lui  <giay> [PWM]   Them lenh lui, vi du: lui 1 0.3
   ngang_trai <giay> [PWM]  Truot ngang trai, vi du: ngang_trai 0.5 0.3
   ngang_phai <giay> [PWM]  Truot ngang phai, vi du: ngang_phai 0.5
+  cheo_tren_trai <giay> [PWM]  Di cheo len trai 45 do, vi du: cheo_tren_trai 0.5 0.3
   trai <do>           Quay tai cho sang trai, vi du: trai 15
   phai <do>           Quay tai cho sang phai, vi du: phai 90
   ngung <giay>       Them khoang nghi, vi du: ngung 0.5
@@ -70,7 +73,7 @@ def parse_command(line: str) -> tuple[str, float, float]:
         validate_turn(direction, angle)
         return direction, angle, TURN_SPEED
     if len(parts) not in (2, 3) or parts[0] not in TIMED_COMMANDS:
-        raise ValueError("Dung cu phap: tien/lui/ngang_trai/ngang_phai <giay> [PWM], trai/phai <do>, ngung <giay>, chay, dung, hoac thoat.")
+        raise ValueError("Dung cu phap: tien/lui/ngang_trai/ngang_phai/cheo_tren_trai <giay> [PWM], trai/phai <do>, ngung <giay>, chay, dung, hoac thoat.")
     try:
         seconds = float(parts[1])
         speed = float(parts[2]) if len(parts) == 3 else DEFAULT_SPEED
@@ -79,6 +82,9 @@ def parse_command(line: str) -> tuple[str, float, float]:
     direction = TIMED_COMMANDS[parts[0]]
     if direction in ("strafe_left", "strafe_right"):
         validate_strafe(direction.removeprefix("strafe_"), seconds, speed)
+    elif direction == "forward_left":
+        validate_duration(seconds)
+        validate_speed(speed)
     else:
         validate_motion(direction, seconds, speed)
     return direction, seconds, speed
@@ -107,7 +113,7 @@ def run_session(controller: MotorController) -> None:
             logger.info("Da gui lenh dung cac motor va huy kich ban dang soan.")
         elif action == "run":
             if not pending:
-                logger.info("Kich ban dang rong. Nhap lenh tien/lui/ngang_trai/ngang_phai/trai/phai/ngung truoc khi chay.")
+                logger.info("Kich ban dang rong. Nhap lenh tien/lui/ngang_trai/ngang_phai/cheo_tren_trai/trai/phai/ngung truoc khi chay.")
                 continue
             # Consume the script before execution so it cannot replay on error.
             script, pending = pending, []
@@ -122,6 +128,8 @@ def run_session(controller: MotorController) -> None:
                     controller.turn_right(amount)
                 elif step in ("strafe_left", "strafe_right"):
                     controller.strafe(step.removeprefix("strafe_"), amount, pwm)
+                elif step == "forward_left":
+                    controller.move_forward_left(amount, pwm)
                 else:
                     controller.move(step, amount, pwm)
             logger.info("Da hoan tat kich ban. Co the nhap kich ban moi.")

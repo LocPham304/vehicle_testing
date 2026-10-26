@@ -183,6 +183,16 @@ class MotorController:
         label = "NGANG TRAI" if direction == "left" else "NGANG PHAI"
         self._drive_for(directions, seconds, speed, label)
 
+    def move_forward_left(self, seconds: float, speed: float = DEFAULT_SPEED) -> None:
+        """Translate at 3*pi/4: FR/RL forward, FL/RR unpowered."""
+        validate_duration(seconds)
+        validate_speed(speed)
+        if set(self._motors) != {"FR", "FL", "RL", "RR"}:
+            raise ValueError("Chay cheo Mecanum can du bon banh FR, FL, RL, RR.")
+        # sin(3*pi/4 - pi/4)=1 for FR/RL; sin(3*pi/4 + pi/4)=0 for FL/RR.
+        directions = {"FR": True, "FL": None, "RL": True, "RR": None}
+        self._drive_for(directions, seconds, speed, "CHEO TREN TRAI")
+
     def turn_left(self, angle: float) -> None:
         """Estimate a counterclockwise chassis turn, viewed from above."""
         self.turn("left", angle)
@@ -212,8 +222,9 @@ class MotorController:
         self._drive_for(directions, seconds, TURN_SPEED, f"{label} {angle:g} do (uoc luong)")
 
     def _drive_for(
-        self, directions: Mapping[str, bool], seconds: float, speed: float, label: str,
+        self, directions: Mapping[str, bool | None], seconds: float, speed: float, label: str,
     ) -> None:
+        """Use physical directions; None keeps a wheel's PWM and inputs at zero."""
         if self._closed:
             raise RuntimeError("Bo dieu khien da dong.")
 
@@ -223,14 +234,18 @@ class MotorController:
 
             # Set the whole group's direction before enabling any PWM.
             for name, pins in self._motors.items():
-                forward = directions[name] != pins.inverted
-                self._set_channel(pins.in1, 1.0 if forward else 0.0)
-                self._set_channel(pins.in2, 0.0 if forward else 1.0)
-                logger.debug("%s: IN1=%d IN2=%d", name, int(forward), int(not forward))
+                if directions[name] is None:
+                    in1 = in2 = 0.0
+                else:
+                    forward = directions[name] != pins.inverted
+                    in1, in2 = (1.0, 0.0) if forward else (0.0, 1.0)
+                self._set_channel(pins.in1, in1)
+                self._set_channel(pins.in2, in2)
+                logger.debug("%s: IN1=%d IN2=%d", name, int(in1), int(in2))
 
             self._sleep(DIRECTION_CHANGE_DELAY_SECONDS)
-            for pins in self._motors.values():
-                self._set_channel(pins.pwm, speed)
+            for name, pins in self._motors.items():
+                self._set_channel(pins.pwm, speed if directions[name] is not None else 0.0)
 
             logger.info("%s trong %g giay, PWM %.0f%%", label, seconds, speed * 100)
             self._sleep(seconds)

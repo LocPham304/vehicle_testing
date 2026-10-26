@@ -342,18 +342,19 @@ class ScriptSessionTests(unittest.TestCase):
         states = []
 
         def observe(seconds):
-            if seconds in (2, 0.5, 1):
+            if seconds in (2, 0.7, 1):
                 states.append((seconds, output.values[0], output.values[2], output.values[1]))
-            if seconds == 0.5:
+            if seconds == 0.7:
                 self.assertTrue(all(value == 0 for value in output.values.values()))
 
         controller = module.MotorController(output, sleeper=observe)
-        lines = ["tien 2", "ngung 0.5", "lui 1", "chay", "thoat"]
+        # Keep the pause distinct from the configured direction-change delay.
+        lines = ["tien 2", "ngung 0.7", "lui 1", "chay", "thoat"]
         with patch("builtins.input", side_effect=lines), redirect_stdout(io.StringIO()):
             module.run_session(controller)
         self.assertEqual(states, [
             (2.0, 32767, 65535, 0),
-            (0.5, 0, 0, 0),
+            (0.7, 0, 0, 0),
             (1.0, 32767, 0, 65535),
         ])
 
