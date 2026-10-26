@@ -23,10 +23,14 @@ class ClawTests(unittest.TestCase):
 
     def test_parser_accepts_absolute_and_relative_claw_degrees(self):
         self.assertEqual(parse_command("cang_goc 0"), ("claw_angle", 0, 0))
-        self.assertEqual(parse_command(" MO_CANG 10 "), ("claw_open", 10, 0))
-        self.assertEqual(parse_command("dong_cang 5.5"), ("claw_grip", 5.5, 0))
+        self.assertEqual(parse_command(" MO_CANG 10 "), ("claw_open", 10, 2))
+        self.assertEqual(parse_command("dong_cang 5.5"), ("claw_grip", 5.5, 2))
+        self.assertEqual(parse_command("mo_cang 10 3"), ("claw_open", 10, 3))
+        self.assertEqual(parse_command("dong_cang 10 0.5"), ("claw_grip", 10, 0.5))
         for command in ("cang_goc 81", "cang_goc nan", "mo_cang 0", "dong_cang -1",
-                        "mo_cang inf", "dong_cang 10 0.5", "cang_goc"):
+                        "mo_cang inf", "dong_cang 10 0", "mo_cang 10 nan",
+                        "mo_cang 10 -1", "mo_cang 10 inf", "mo_cang 10 abc",
+                        "mo_cang 10 2 extra", "cang_goc 40 2", "cang_goc"):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 parse_command(command)
 
@@ -36,7 +40,8 @@ class ClawTests(unittest.TestCase):
         claw.open(3)
         claw.grip(2)
         self.assertEqual(self.output.angles, [40, 39, 38, 37, 38, 39])
-        self.assertEqual(len([wait for wait in self.waits if wait == 0.02]), 5)
+        # Two relative moves take 2s each, plus three 0.5s settling periods.
+        self.assertAlmostEqual(sum(self.waits), 5.5)
 
     def test_claw_requires_own_reference_without_opening_gpio(self):
         claw = self.claw()
@@ -56,9 +61,13 @@ class ClawTests(unittest.TestCase):
         self.assertEqual(self.output.angles, [80])
 
     def test_interrupt_in_ramp_forgets_reference_and_releases_pwm(self):
+        ticks = 0
         def wait(seconds):
-            if seconds == 0.02:
-                raise KeyboardInterrupt
+            nonlocal ticks
+            if seconds != 0.5:
+                ticks += 1
+                if ticks == 2:
+                    raise KeyboardInterrupt
         claw = self.claw(wait)
         claw.set_angle(40)
         self.output.released = False
@@ -95,6 +104,14 @@ class ClawTests(unittest.TestCase):
         with patch("builtins.input", side_effect=lines), redirect_stdout(io.StringIO()):
             run_session(MotorController(Mock(), sleeper=lambda _: None), None, claw)
         self.factory.assert_not_called()
+
+    def test_queued_claw_moves_use_explicit_and_default_durations(self):
+        claw = self.claw()
+        lines = ["cang_goc 40", "mo_cang 10 3", "dong_cang 5", "chay", "thoat"]
+        with patch("builtins.input", side_effect=lines), redirect_stdout(io.StringIO()):
+            run_session(MotorController(Mock(), sleeper=lambda _: None), None, claw)
+        self.assertEqual(self.output.angles[-1], 35)
+        self.assertAlmostEqual(sum(self.waits), 6.5)  # 3s + 2s + three settling waits.
 
     def test_main_hardware_uses_confirmed_pins_and_closes_both(self):
         main = importlib.import_module("vehicle_testing.main")
@@ -196,6 +213,52 @@ class ClawTests(unittest.TestCase):
                 claw.set_angle(40)
         with self.assertRaisesRegex(ValueError, "cang_goc"):
             claw.open(10)
+
+    def test_open_reaches_requested_angle_at_two_seconds_before_settle_and_release(self):
+        elapsed = 0
+        writes = []
+        output = Mock()
+        def wait(seconds):
+            nonlocal elapsed
+            elapsed += seconds
+        output.set_angle.side_effect = lambda angle: writes.append((elapsed, angle))
+        claw = self.module.ClawController(lambda: output, sleeper=wait)
+        claw.set_angle(40)
+        elapsed = 0
+        writes.clear()
+        claw.open(10)
+        self.assertEqual([angle for _, angle in writes], [39, 38, 37, 36, 35, 34, 33, 32, 31, 30])
+        self.assertAlmostEqual(writes[0][0], 0.2)
+        self.assertAlmostEqual(writes[-1][0], 2)
+        self.assertAlmostEqual(elapsed, 2.5)
+
+    def test_custom_duration_handles_fractional_final_step(self):
+        elapsed = 0
+        writes = []
+        output = Mock()
+        def wait(seconds):
+            nonlocal elapsed
+            elapsed += seconds
+        output.set_angle.side_effect = lambda angle: writes.append((elapsed, angle))
+        claw = self.module.ClawController(lambda: output, sleeper=wait)
+        claw.set_angle(40)
+        elapsed = 0
+        writes.clear()
+        claw.open(2.5, seconds=3)
+        for (actual_time, actual_angle), (expected_time, expected_angle) in zip(
+                writes, [(1.2, 39), (2.4, 38), (3, 37.5)]):
+            self.assertAlmostEqual(actual_time, expected_time)
+            self.assertAlmostEqual(actual_angle, expected_angle)
+        self.assertEqual(len(writes), 3)
+
+    def test_invalid_duration_does_not_send_new_angle(self):
+        claw = self.claw()
+        claw.set_angle(40)
+        self.output.angles.clear()
+        for seconds in (0, -1, float("nan"), float("inf")):
+            with self.subTest(seconds=seconds), self.assertRaises(ValueError):
+                claw.open(10, seconds=seconds)
+        self.assertEqual(self.output.angles, [])
 
 
 if __name__ == "__main__":

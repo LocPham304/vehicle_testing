@@ -13,7 +13,7 @@ from vehicle_testing.config import (
     SERVO_BCM_PIN, SERVO_PWM_FREQUENCY_HZ, SERVO_MIN_ANGLE,
     SERVO_MAX_ANGLE, SERVO_MOVE_WAIT_SECONDS,
     CLAW_BCM_PIN, CLAW_STEP_DEGREES, CLAW_STEP_INTERVAL_SECONDS,
-    CLAW_HOLD_POSITION, CLAW_MOVE_WAIT_SECONDS,
+    CLAW_HOLD_POSITION, CLAW_MOVE_WAIT_SECONDS, CLAW_MOVE_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,11 @@ def validate_hand_angle(angle: float) -> None:
 def validate_hand_step(angle: float) -> None:
     if not math.isfinite(angle) or angle <= 0:
         raise ValueError("So do nang/ha phai la so duong huu han.")
+
+
+def validate_claw_seconds(seconds: float) -> None:
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("Thoi gian chuyen cang phai la so duong huu han.")
 
 
 class ServoOutput(Protocol):
@@ -124,8 +129,12 @@ class ServoController:
         self._hold_position = hold_position
         self._settle_seconds = settle_seconds
 
-    def set_angle(self, angle: float) -> None:
+    def set_angle(self, angle: float, *, move_seconds: float | None = None) -> None:
         validate_hand_angle(angle)
+        if move_seconds is not None:
+            validate_claw_seconds(move_seconds)
+            if self._angle is None:
+                raise ValueError(f"Chay {self._reference_command} <0..80> truoc de dat goc tham chieu.")
         if self._closed:
             raise RuntimeError("Bo dieu khien tay da dong.")
         if angle == self._angle and self._hold_position:
@@ -136,12 +145,22 @@ class ServoController:
                 self._output = self._output_factory()
             if self._smooth and self._angle is not None and angle != self._angle:
                 position = self._angle
+                distance = abs(angle - position)
+                if move_seconds is not None:
+                    logger.info("%s chuyen goc trong %g giay (thoi gian phan mem).",
+                                self._label, move_seconds)
                 while position != angle:
                     delta = angle - position
-                    position = (angle if abs(delta) <= CLAW_STEP_DEGREES else
-                                position + math.copysign(CLAW_STEP_DEGREES, delta))
+                    next_position = (angle if abs(delta) <= CLAW_STEP_DEGREES else
+                                     position + math.copysign(CLAW_STEP_DEGREES, delta))
+                    if move_seconds is not None:
+                        # Request the final angle at the end of the transition.
+                        # A fractional final step receives its proportional time.
+                        self._sleep(move_seconds * abs(next_position - position) / distance)
+                    position = next_position
                     self._output.set_angle(position)
-                    self._sleep(CLAW_STEP_INTERVAL_SECONDS)
+                    if move_seconds is None:
+                        self._sleep(CLAW_STEP_INTERVAL_SECONDS)
             else:
                 self._output.set_angle(angle)
             self._sleep(self._settle_seconds)
@@ -158,8 +177,10 @@ class ServoController:
             raise
         self._angle = angle
 
-    def _step(self, angle: float, sign: int) -> None:
+    def _step(self, angle: float, sign: int, *, seconds: float | None = None) -> None:
         validate_hand_step(angle)
+        if seconds is not None:
+            validate_claw_seconds(seconds)
         if self._closed:
             raise RuntimeError("Bo dieu khien tay da dong.")
         if self._angle is None:
@@ -170,7 +191,7 @@ class ServoController:
             logger.info("Gioi han goc tay: %g -> %g do", target, limited)
         if limited == self._angle:
             return
-        self.set_angle(limited)
+        self.set_angle(limited, move_seconds=seconds)
 
     def close(self) -> None:
         if self._closed:
@@ -198,9 +219,9 @@ class ClawController(ServoController):
                          reference_command="cang_goc", smooth=True,
                          hold_position=CLAW_HOLD_POSITION, settle_seconds=CLAW_MOVE_WAIT_SECONDS)
 
-    def open(self, angle: float) -> None:
+    def open(self, angle: float, *, seconds: float = CLAW_MOVE_SECONDS) -> None:
         """User confirmed: decreasing angle opens the claw."""
-        self._step(angle, -1)
+        self._step(angle, -1, seconds=seconds)
 
-    def grip(self, angle: float) -> None:
-        self._step(angle, 1)
+    def grip(self, angle: float, *, seconds: float = CLAW_MOVE_SECONDS) -> None:
+        self._step(angle, 1, seconds=seconds)

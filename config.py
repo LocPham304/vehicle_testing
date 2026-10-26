@@ -27,7 +27,9 @@ SERVO_MIN_ANGLE = 0.0
 SERVO_MAX_ANGLE = 80.0
 # Wait between commands; this is not a measurement of the arm's travel time.
 SERVO_MOVE_WAIT_SECONDS = 1.0
-# Claw movement between known positions: 1 degree every 20 ms (~50 deg/s).
+# Relative claw moves spread their requested angle changes over 2 seconds.
+CLAW_MOVE_SECONDS = 2.0
+# Absolute claw moves between known positions retain the 1 degree / 20 ms ramp.
 # The first absolute reference command cannot ramp from an unknown position.
 CLAW_STEP_DEGREES = 1.0
 CLAW_STEP_INTERVAL_SECONDS = 0.02

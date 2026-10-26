@@ -184,26 +184,36 @@ Người dùng cũng xác nhận **giảm góc thì mở càng**, tăng góc th�
 
 ```text
 cang_goc 40
-mo_cang 10
-dong_cang 10
+mo_cang 10 2
+dong_cang 10 2
 chay
 ```
 
 Góc yêu cầu là **40° → 30° → 40°**. `cang_goc` đặt góc tuyệt đối;
-`mo_cang`/`dong_cang` nhận số độ tương đối dương, không nhận PWM hoặc giây.
+`mo_cang <độ> [giây]`/`dong_cang <độ> [giây]` nhận số độ tương đối dương,
+thời gian chuyển góc mặc định **2 giây** (`CLAW_MOVE_SECONDS` trong `config.py`).
+Ví dụ `mo_cang 10` và `mo_cang 10 2` đều giảm góc yêu cầu 10° trong 2 giây;
+`mo_cang 10 3` chuyển cùng khoảng góc trong 3 giây. Không nhận PWM.
 Phải chạy `cang_goc` trước các lệnh tương đối trong mỗi phiên. Mốc góc càng
 độc lập với `tay_goc` của nâng/hạ; có thể xen kẽ hai nhóm lệnh trong cùng kịch bản.
 Giới hạn lệnh ban đầu giữ **0–80°** theo `servo2.limit()` trong firmware cũ,
 chưa phải giới hạn cơ khí đã hiệu chỉnh trên càng. Các thử nghiệm người dùng
 đã xác nhận ở khoảng 30–40°; tiếp tục thử trong khoảng này trước.
 
-Để giảm cú giật do đổi ngay góc đích, càng chuyển từng bước **1° mỗi 20 ms**
-giữa các góc đã biết. Cấu hình nằm ở `CLAW_STEP_DEGREES` và
-`CLAW_STEP_INTERVAL_SECONDS`; sau đó chờ thêm `CLAW_MOVE_WAIT_SECONDS = 0.5` giây.
+Các lệnh mở/khép chia khoảng góc thành các bước tối đa **1°** (`CLAW_STEP_DEGREES`),
+phân bố thời gian theo độ lớn mỗi bước để gửi góc đích vào cuối khoảng thời gian
+đã chọn. Sau đó chờ thêm `CLAW_MOVE_WAIT_SECONDS = 0.5` giây rồi ngắt PWM,
+nên lệnh mặc định mất khoảng **2,5 giây** tổng cộng. Nếu đã chạm giới hạn góc,
+lệnh tương đối không đổi góc sẽ được bỏ qua.
+`cang_goc` giữa hai mốc đã có vẫn dùng bước 1° mỗi `CLAW_STEP_INTERVAL_SECONDS = 0.02` giây.
 Lệnh mốc đầu tiên gửi thẳng góc yêu cầu vì chưa biết vị trí xuất phát.
 Chia bước không xác nhận đã hết giật thực tế; nếu vẫn giật/rung thì cần
 kiểm tra thêm nguồn và tín hiệu PWM. `probe_servo.py` vẫn gửi góc trực tiếp
 để chẩn đoán, không dùng chuyển góc từng bước này.
+
+Thời gian trên là thời gian phát các góc yêu cầu trong phần mềm, chưa xác nhận
+càng thực tế mở chậm hoặc mở đúng góc. Hiện tượng mọi góc đều mở hết càng vẫn
+cần xác định nguyên nhân; đặt 2 giây không tự khắc phục hiện tượng đó.
 
 Mặc định **`CLAW_HOLD_POSITION = False`**: sau khi chờ 0,5 giây, chương trình
 gửi duty 0 để ngắt PWM riêng càng BCM 12. Thay đổi này dựa trên quan sát

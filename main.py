@@ -10,7 +10,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from vehicle_testing.config import DEFAULT_SPEED, TURN_SPEED, SERVO_BCM_PIN, CLAW_BCM_PIN, CLAW_HOLD_POSITION
+from vehicle_testing.config import (
+    DEFAULT_SPEED, TURN_SPEED, SERVO_BCM_PIN, CLAW_BCM_PIN, CLAW_HOLD_POSITION,
+    CLAW_MOVE_SECONDS,
+)
 from vehicle_testing.hand import (
     DryRunServoOutput, GPIOServoOutput, HandController, ClawController,
     validate_hand_angle, validate_hand_step,
@@ -55,8 +58,8 @@ HELP = f"""Lenh:
   nang <do>          Nang tay: giam goc tuong doi, vi du: nang 10
   ha <do>            Ha tay: tang goc tuong doi, vi du: ha 10
   cang_goc <do>      Dat goc cang tuyet doi 0..80, vi du: cang_goc 40
-  mo_cang <do>       Mo cang: giam goc tuong doi, vi du: mo_cang 10
-  dong_cang <do>     Khep cang: tang goc tuong doi, vi du: dong_cang 10
+  mo_cang <do> [giay]    Mo cang: giam goc, vi du: mo_cang 10 2
+  dong_cang <do> [giay]  Khep cang: tang goc, vi du: dong_cang 10 2
   ngung <giay>       Them khoang nghi, vi du: ngung 0.5
   chay               Thuc hien kich ban da nhap
   dung               Gui lenh dung va huy kich ban dang soan
@@ -66,6 +69,7 @@ Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
 Chay tay_goc truoc nang/ha. Nang/ha dung GPIO BCM {SERVO_BCM_PIN}, gioi han 0..80 do.
 Chay cang_goc truoc mo_cang/dong_cang. Cang dung GPIO BCM {CLAW_BCM_PIN}, gioi han 0..80 do.
+Mo/dong cang mac dinh chuyen goc trong {CLAW_MOVE_SECONDS:g} giay, chua gom thoi gian cho on dinh.
 Tay nang/ha giu PWM; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
 Thoat/Ctrl+C se tat PWM cac servo.
 Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
@@ -75,11 +79,20 @@ Khi dang chay, nhan Ctrl+C de dung va thoat.
 
 
 def parse_command(line: str) -> tuple[str, float, float]:
-    """Return (action, seconds_or_degrees, pwm); arm commands have no PWM argument."""
+    """Return (action, seconds_or_degrees, pwm_or_claw_seconds)."""
     parts = line.lower().split()
     controls = {"chay": "run", "dung": "stop", "thoat": "exit"}
     if len(parts) == 1 and parts[0] in controls:
         return controls[parts[0]], 0.0, 0.0
+    if len(parts) in (2, 3) and parts[0] in ("mo_cang", "dong_cang"):
+        try:
+            angle = float(parts[1])
+            seconds = float(parts[2]) if len(parts) == 3 else CLAW_MOVE_SECONDS
+        except ValueError as error:
+            raise ValueError("Goc va thoi gian cang phai la so, vi du: mo_cang 10 2.") from error
+        validate_hand_step(angle)
+        validate_duration(seconds)
+        return CLAW_COMMANDS[parts[0]], angle, seconds
     if len(parts) == 2 and parts[0] in (HAND_COMMANDS | CLAW_COMMANDS):
         try:
             angle = float(parts[1])
@@ -106,7 +119,7 @@ def parse_command(line: str) -> tuple[str, float, float]:
         validate_turn(direction, angle)
         return direction, angle, TURN_SPEED
     if len(parts) not in (2, 3) or parts[0] not in TIMED_COMMANDS:
-        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha/tay_goc/mo_cang/dong_cang/cang_goc <do>, ngung <giay>, chay, dung, hoac thoat.")
+        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha/tay_goc/cang_goc <do>, mo_cang/dong_cang <do> [giay], ngung <giay>, chay, dung, hoac thoat.")
     try:
         seconds = float(parts[1])
         speed = float(parts[2]) if len(parts) == 3 else DEFAULT_SPEED
@@ -161,9 +174,9 @@ def run_session(controller: MotorController, hand: HandController | None = None,
                     if step == "claw_angle":
                         claw.set_angle(amount)
                     elif step == "claw_open":
-                        claw.open(amount)
+                        claw.open(amount, seconds=pwm)
                     else:
-                        claw.grip(amount)
+                        claw.grip(amount, seconds=pwm)
                 elif step in HAND_LABELS:
                     controller.stop()
                     if hand is None:
@@ -195,7 +208,10 @@ def run_session(controller: MotorController, hand: HandController | None = None,
             logger.info("Da hoan tat kich ban. Co the nhap kich ban moi.")
         else:
             pending.append((action, value, speed))
-            if action in (HAND_LABELS | CLAW_LABELS):
+            if action in ("claw_open", "claw_grip"):
+                logger.info("Da luu lenh #%d: %s %g do trong %g giay. Go chay de bat dau.",
+                            len(pending), CLAW_LABELS[action], value, speed)
+            elif action in (HAND_LABELS | CLAW_LABELS):
                 logger.info("Da luu lenh #%d: %s %g do. Go chay de bat dau.",
                             len(pending), (HAND_LABELS | CLAW_LABELS)[action], value)
             elif action == "pause":
