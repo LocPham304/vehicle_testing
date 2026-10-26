@@ -174,6 +174,30 @@ python vehicle_testing/main.py --dry-run
 Sau khi kiểm tra lệnh, dùng cách chạy trên Raspberry Pi ở phần trên để chạy thật.
 Giới hạn góc và chiều nâng/hạ vẫn cần xác nhận với cơ cấu thực tế.
 
+### Chẩn đoán cổng servo chưa xác định GPIO
+
+Tên in trên bo như PWM4 hoặc S1 cần được đối chiếu với đường mạch; số cổng
+không tự trở thành số BCM. Các ví dụ cũ trong repo nhắc tới BCM 12/13/18/19,
+nhưng chưa có sơ đồ xác nhận từng cổng trên bo Edison Academy Rev1.1.
+
+`probe_servo.py` thử riêng **một GPIO được chọn**, không mở PCA9685 hoặc motor.
+Thoát `main.py` và các chương trình servo khác trước khi thử thật. Chạy từ
+thư mục `vehicle_testing` trên Pi:
+
+```sh
+python probe_servo.py --pin 19
+```
+
+Phép thử chỉ yêu cầu **40° → 30° → 40°**, mỗi góc giữ hai giây, rồi tắt PWM
+và giải phóng riêng GPIO đã chọn. Sau đó tay không còn được yêu cầu giữ lực.
+Quan sát xem servo nào di chuyển; log không đo được chuyển động thực tế.
+Nếu BCM 19 không điều khiển được servo, có thể thử từng ứng viên `12`, `13`,
+`18` bằng các lần chạy riêng. Đây là tìm chân bằng quan sát, chưa phải ánh xạ
+đã xác nhận của bo; nếu các chân đều không có chuyển động thì cần kiểm tra
+nguồn VCC/GND và tín hiệu tại giắc bằng thiết bị đo.
+Chỉ thử khi cơ cấu cho phép chuyển động trong khoảng 30–40°.
+Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và không chờ.
+
 ## Chạy ngang trái/phải bằng bánh Mecanum
 
 Lệnh `ngang_trai <giây> [PWM]` và `ngang_phai <giây> [PWM]` yêu cầu cả thân xe
