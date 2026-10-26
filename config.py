@@ -15,8 +15,8 @@ DIRECTION_CHANGE_DELAY_SECONDS = 0.003
 # NOT measured angles on this vehicle. Calibrate each side on the actual floor.
 # Keep this PWM fixed while calibrating; changing it invalidates both factors.
 TURN_SPEED = 0.5
-TURN_LEFT_SECONDS_PER_DEGREE = 0.0179
-TURN_RIGHT_SECONDS_PER_DEGREE = 0.0179
+TURN_LEFT_SECONDS_PER_DEGREE = 0.0089
+TURN_RIGHT_SECONDS_PER_DEGREE = 0.0089
 
 # Sideways PWM trim only. Neutral defaults; these are NOT measured corrections.
 # Actual wheel PWM = command PWM * gain. Use a finite number in (0, 1].
