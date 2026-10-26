@@ -245,6 +245,39 @@ và tín hiệu tại giắc bằng thiết bị đo.
 Chỉ thử khi cơ cấu cho phép chuyển động trong khoảng 30–40°.
 Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và không chờ.
 
+### Càng luôn mở hết dù đổi góc: xác định loại servo trước
+
+Nhãn "12G Digital Servo" chưa xác nhận servo định vị hay quay liên tục.
+Hiện các lệnh càng đang giả định servo định vị 180° và dùng giới hạn 0–80°
+từ firmware cũ; đó chưa phải dải cơ khí đã hiệu chỉnh của càng thực tế.
+Theo công thức hiện tại, 0–80° tương ứng khoảng 500–1389 µs. Nếu servo quay
+liên tục, dải này có thể chỉ yêu cầu quay cùng một chiều; nếu là servo định vị,
+cơ cấu cũng có thể chạm hết hành trình trong dải này. Chưa xác định nguyên nhân
+chỉ từ việc cả các góc đều làm càng mở hết. Ngắt PWM chỉ dừng yêu cầu giữ xung,
+không xác nhận góc được điều khiển đúng.
+
+Để phân biệt, tắt nguồn và tách liên kết cơ khí của servo khỏi càng trước khi
+thử xung trực tiếp. Không thử xung quanh 1500 µs khi cơ cấu vẫn gắn và chưa biết
+biên hành trình; 1500 µs không được bảo đảm là vị trí an toàn hoặc điểm dừng.
+Thoát các chương trình servo khác. Chạy từng lệnh riêng trên Pi:
+
+```sh
+python probe_servo.py --pin 12 --pulse-us 1500 --seconds 2
+python probe_servo.py --pin 12 --pulse-us 1450 --seconds 2
+python probe_servo.py --pin 12 --pulse-us 1550 --seconds 2
+```
+
+Quan sát **trong lúc xung còn được phát**: nếu trục cứ quay và hai phía làm
+quay ngược chiều, điều đó phù hợp với servo quay liên tục. Nếu trục tới các
+vị trí rồi đứng yên dù xung vẫn còn, điều đó phù hợp với servo định vị.
+Phép thử giới hạn 1000–2000 µs, mỗi lần tối đa 3 giây, rồi tắt PWM và chỉ dọn
+GPIO được chọn; không tự đo hoặc kết luận loại servo. Điểm dừng thực tế có
+thể khác 1500 µs. Có thể thêm `--dry-run` để xem yêu cầu mà không mở GPIO.
+Nếu xác nhận servo quay liên tục, cần đổi lệnh càng sang tốc độ/thời gian hoặc
+thêm phản hồi vị trí; chưa được coi các số trong `cang_goc` là góc thực.
+Tham khảo sự khác nhau giữa xung vị trí và xung tốc độ tại
+[Adafruit: servo pulse](https://makecode.adafruit.com/reference/pins/servo-set-pulse).
+
 ## Chạy ngang trái/phải bằng bánh Mecanum
 
 Lệnh `ngang_trai <giây> [PWM]` và `ngang_phai <giây> [PWM]` yêu cầu cả thân xe

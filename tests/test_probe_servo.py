@@ -68,6 +68,35 @@ class ServoProbeTests(unittest.TestCase):
         self.pwm.stop.assert_called_once()
         self.gpio.cleanup.assert_called_once_with(13)
 
+    def test_raw_pulse_mode_uses_microseconds_without_angle_conversion(self):
+        waits = []
+        result, output = self.run_probe("--pin", "12", "--pulse-us", "1500",
+                                        "--seconds", "1", sleeper=waits.append)
+        self.assertEqual(result, 0)
+        self.assertEqual([call.args for call in self.pwm.ChangeDutyCycle.call_args_list], [(7.5,), (0,)])
+        self.assertEqual(waits, [1])
+        self.assertIn("1500", output)
+        self.assertIn("tach lien ket co khi", output)
+        self.gpio.cleanup.assert_called_once_with(12)
+
+    def test_raw_dry_run_does_not_import_gpio_or_wait(self):
+        with patch.object(self.module.importlib, "import_module", side_effect=AssertionError("GPIO opened")):
+            result, output = self.run_probe("--pin", "12", "--pulse-us", "1550", "--dry-run",
+                                           sleeper=Mock(side_effect=AssertionError("waited")))
+        self.assertEqual(result, 0)
+        self.assertIn("1550", output)
+
+    def test_rejects_invalid_raw_pulses_and_durations_before_gpio(self):
+        for option, value in (("--pulse-us", "0"), ("--pulse-us", "999"),
+                              ("--pulse-us", "2001"), ("--pulse-us", "nan"),
+                              ("--seconds", "0"), ("--seconds", "4"),
+                              ("--seconds", "inf")):
+            with self.subTest(option=option, value=value), patch("sys.stderr", io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    self.run_probe("--pin", "12", option, value)
+                self.assertEqual(error.exception.code, 2)
+        self.gpio.setup.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
