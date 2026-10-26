@@ -32,8 +32,15 @@ CLAW_MIN_ANGLE = 0.0
 CLAW_MAX_ANGLE = 90.0
 CLAW_OPEN_ANGLE = 0.0
 CLAW_CLOSE_ANGLE = 90.0
-# Time to send each endpoint request; this does not control physical speed.
+# User will prepare the claw fully closed before starting the program.
+CLAW_START_ANGLE = CLAW_CLOSE_ANGLE
+# Nominal time to interpolate the requested angle between endpoints.
 CLAW_MOVE_SECONDS = 2.0
+# Reject shorter requests, which would increase the commanded travel speed.
+CLAW_MIN_MOVE_SECONDS = 2.0
+CLAW_UPDATE_INTERVAL_SECONDS = 0.02
+# Allow the final request to be emitted for several PWM frames before release.
+CLAW_SETTLE_SECONDS = 0.1
 # Match the old door controller's pulse-then-release behavior for the claw.
 # False stops PWM after each move, so active gripping force is not maintained.
 CLAW_HOLD_POSITION = False

@@ -12,11 +12,12 @@ if __package__ in (None, ""):
 
 from vehicle_testing.config import (
     DEFAULT_SPEED, TURN_SPEED, SERVO_BCM_PIN, CLAW_BCM_PIN, CLAW_HOLD_POSITION,
-    CLAW_MOVE_SECONDS, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
+    CLAW_MOVE_SECONDS, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE, CLAW_START_ANGLE,
+    CLAW_MIN_MOVE_SECONDS, CLAW_SETTLE_SECONDS,
 )
 from vehicle_testing.hand import (
     DryRunServoOutput, GPIOServoOutput, HandController, ClawController,
-    validate_hand_angle, validate_hand_step,
+    validate_hand_angle, validate_hand_step, validate_claw_seconds,
 )
 from vehicle_testing.controller import (
     DryRunOutput,
@@ -67,8 +68,9 @@ Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
 Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
 Chay tay_goc truoc nang/ha. Nang/ha dung GPIO BCM {SERVO_BCM_PIN}, gioi han 0..80 do.
-Cang dung GPIO BCM {CLAW_BCM_PIN}; chay mo/dong truc tiep, khong can dat moc goc.
-Mo/dong cang mac dinh phat PWM {CLAW_MOVE_SECONDS:g} giay; thoi gian nay khong dieu chinh toc do mo.
+Cang dung GPIO BCM {CLAW_BCM_PIN}; can de cang khep {CLAW_START_ANGLE:g} do truoc khi khoi dong.
+Mo/dong cang chia buoc goc trong {CLAW_MOVE_SECONDS:g} giay mac dinh, toi thieu {CLAW_MIN_MOVE_SECONDS:g} giay.
+Sau do cho {CLAW_SETTLE_SECONDS:g} giay de phat goc cuoi; chua do duoc toc do co cau that.
 Tay nang/ha giu PWM; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
 Thoat/Ctrl+C se tat PWM cac servo.
 Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
@@ -88,7 +90,7 @@ def parse_command(line: str) -> tuple[str, float, float]:
             seconds = float(parts[1]) if len(parts) == 2 else CLAW_MOVE_SECONDS
         except ValueError as error:
             raise ValueError("Thoi gian cang phai la so, vi du: mo_cang 2.") from error
-        validate_duration(seconds)
+        validate_claw_seconds(seconds)
         return CLAW_COMMANDS[parts[0]], seconds, 0.0
     if len(parts) == 2 and parts[0] in HAND_COMMANDS:
         try:

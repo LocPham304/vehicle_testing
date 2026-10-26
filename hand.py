@@ -1,4 +1,4 @@
-"""Arm position control (BCM 18) and direct gripper open/close (BCM 12).
+"""Arm position control (BCM 18) and gradual gripper open/close (BCM 12).
 
 Requested angles are not measured positions. GPIO opens only on execution.
 """
@@ -14,6 +14,8 @@ from vehicle_testing.config import (
     SERVO_MAX_ANGLE, SERVO_MOVE_WAIT_SECONDS,
     CLAW_BCM_PIN, CLAW_MIN_ANGLE, CLAW_MAX_ANGLE, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
     CLAW_HOLD_POSITION, CLAW_MOVE_SECONDS,
+    CLAW_START_ANGLE, CLAW_MIN_MOVE_SECONDS, CLAW_UPDATE_INTERVAL_SECONDS,
+    CLAW_SETTLE_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,8 +32,8 @@ def validate_hand_step(angle: float) -> None:
 
 
 def validate_claw_seconds(seconds: float) -> None:
-    if not math.isfinite(seconds) or seconds <= 0:
-        raise ValueError("Thoi gian chuyen cang phai la so duong huu han.")
+    if not math.isfinite(seconds) or seconds < CLAW_MIN_MOVE_SECONDS:
+        raise ValueError(f"Thoi gian chuyen cang phai huu han va it nhat {CLAW_MIN_MOVE_SECONDS:g} giay.")
 
 
 def validate_claw_angle(angle: float) -> None:
@@ -191,38 +193,63 @@ class HandController(ServoController):
 
 
 class ClawController:
-    """Send fixed endpoints for a chosen duration, without a position reference."""
+    """Interpolate from the assumed closed startup position; no physical feedback."""
 
     def __init__(self, output_factory: Callable[[], ServoOutput],
                  sleeper: Callable[[float], None] = time.sleep) -> None:
+        validate_claw_angle(CLAW_START_ANGLE)
+        validate_claw_seconds(CLAW_MOVE_SECONDS)
+        if (not math.isfinite(CLAW_MIN_MOVE_SECONDS) or CLAW_MIN_MOVE_SECONDS <= 0
+                or not math.isfinite(CLAW_UPDATE_INTERVAL_SECONDS) or CLAW_UPDATE_INTERVAL_SECONDS <= 0
+                or not math.isfinite(CLAW_SETTLE_SECONDS) or CLAW_SETTLE_SECONDS <= 0):
+            raise ValueError("Thoi gian cau hinh cang phai duong huu han.")
         self._output_factory = output_factory
         self._output: ServoOutput | None = None
         self._sleep = sleeper
         self._hold_position = CLAW_HOLD_POSITION
         self._closed = False
+        self._angle: float | None = CLAW_START_ANGLE
+        logger.info("Can de cang khep %g do truoc khi khoi dong; day la vi tri gia dinh, khong do duoc.",
+                    CLAW_START_ANGLE)
 
     def _move(self, angle: float, seconds: float, label: str) -> None:
         validate_claw_seconds(seconds)
         validate_claw_angle(angle)
         if self._closed:
             raise RuntimeError("Bo dieu khien cang da dong.")
-        logger.info("%s: yeu cau %g do, phat PWM %g giay (GPIO BCM %d).",
-                    label, angle, seconds, CLAW_BCM_PIN)
+        if self._angle is None:
+            raise RuntimeError("Khong biet vi tri cang sau loi/ngat. Can de cang khep va khoi dong lai.")
+        if angle == self._angle:
+            logger.info("%s: goc yeu cau da o %g do, bo qua chuyen dong.", label, angle)
+            return
+        start = self._angle
+        steps = math.ceil(seconds / CLAW_UPDATE_INTERVAL_SECONDS)
+        logger.info("%s: chuyen goc yeu cau %g -> %g do trong %g giay (GPIO BCM %d).",
+                    label, start, angle, seconds, CLAW_BCM_PIN)
         try:
             if self._output is None:
                 self._output = self._output_factory()
-            self._output.set_angle(angle)
-            self._sleep(seconds)
+            self._output.set_angle(start)
+            for step in range(1, steps + 1):
+                self._sleep(seconds / steps)
+                progress = step / steps
+                # Quintic easing: zero velocity and acceleration at both ends.
+                fraction = progress ** 3 * (10 - 15 * progress + 6 * progress ** 2)
+                position = angle if step == steps else start + (angle - start) * fraction
+                self._output.set_angle(position)
+            self._sleep(CLAW_SETTLE_SECONDS)
+            if not self._hold_position:
+                self._output.release()
+                logger.info("Da gui yeu cau tat PWM cang; khong giu luc kep lien tuc.")
         except (Exception, KeyboardInterrupt):
+            self._angle = None
             if self._output is not None:
                 try:
                     self._output.release()
                 except Exception:
                     logger.exception("Khong tat duoc PWM cang sau loi")
             raise
-        if not self._hold_position:
-            self._output.release()
-            logger.info("Da gui yeu cau tat PWM cang; khong giu luc kep lien tuc.")
+        self._angle = angle
 
     def open(self, seconds: float = CLAW_MOVE_SECONDS) -> None:
         self._move(CLAW_OPEN_ANGLE, seconds, "MO CANG")
@@ -234,5 +261,6 @@ class ClawController:
         if self._closed:
             return
         self._closed = True
+        self._angle = None
         if self._output is not None:
             self._output.close()

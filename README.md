@@ -194,13 +194,21 @@ Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGL
 `CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ vẫn giới hạn 0–80°.
 Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
 
-Mặc định phát PWM ở góc đích trong **2 giây** (`CLAW_MOVE_SECONDS`) rồi ngắt PWM.
-`mo_cang` tương đương `mo_cang 2`; `dong_cang 0.5` phát yêu cầu đóng trong 0,5 giây.
-Tham số phải là số dương hữu hạn, không nhận thêm góc hoặc PWM.
-Lệnh gửi trực tiếp góc đích, không nội suy từ vị trí giả định và không cộng thêm
-0,5 giây chờ. **Thời gian phát PWM không điều chỉnh tốc độ di chuyển thực tế**:
-càng có thể tới đích trước khi hết thời gian. Chưa xác nhận càng mở chậm hoặc
-mở đúng góc trên phần cứng. `probe_servo.py` vẫn là công cụ thử riêng.
+**Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 90°**, như người
+dùng đã xác nhận có thể chuẩn bị. `CLAW_START_ANGLE` là vị trí khởi đầu giả định;
+chương trình không tự chạy càng về gốc, không đọc được góc và không phát PWM khi
+khởi tạo. Nếu càng không ở vị trí này, lần phát xung đầu vẫn có thể gây bật nhanh.
+
+`mo_cang 2` chia chuyển động yêu cầu **90° → 0° trong 2 giây**;
+`dong_cang 2` chuyển **0° → 90° trong 2 giây**. Bỏ số giây mặc định 2
+(`CLAW_MOVE_SECONDS`). Mỗi khoảng tối đa 20 ms (`CLAW_UPDATE_INTERVAL_SECONDS`)
+cập nhật một góc; đường chuyển góc tăng tốc và giảm tốc nhẹ ở hai đầu.
+Thời gian phải hữu hạn và **ít nhất 2 giây** (`CLAW_MIN_MOVE_SECONDS`), không nhận
+thêm góc hoặc PWM. Có thể dùng `mo_cang 4`/`dong_cang 4` để chia bước chậm hơn.
+Sau góc cuối, chờ thêm `CLAW_SETTLE_SECONDS = 0.1` giây trước khi ngắt PWM;
+lệnh 2 giây mất ít nhất khoảng **2,1 giây** tổng cộng, có thể dài hơn do lịch chạy hệ điều hành.
+Thời gian này điều khiển lịch gửi góc yêu cầu; chưa xác nhận tốc độ cơ cấu thật.
+`probe_servo.py` vẫn gửi góc trực tiếp, không áp dụng cách chuyển từng bước này.
 
 Mặc định **`CLAW_HOLD_POSITION = False`**: hết thời gian thì gửi duty 0 để ngắt
 PWM riêng BCM 12. Càng không giữ lực kẹp liên tục và vật đang kẹp có thể tuột.
@@ -208,9 +216,19 @@ Nâng/hạ BCM 18 vẫn giữ PWM. `CLAW_HOLD_POSITION = True` giữ PWM sau tha
 chỉ dùng sau khi kiểm tra nguyên nhân giật thực tế. Người dùng từng xác nhận
 càng hết giật ngay khi Ctrl+C tắt PWM; chưa xác định nguyên nhân phần cứng.
 
-Có thể mở hoặc đóng ngay ở lệnh đầu tiên và lặp lại cùng thao tác sau khi nhả PWM.
+Nếu góc yêu cầu cuối đã trùng đích (gồm lệnh đóng ngay sau khởi động), bỏ qua thao
+tác và không phát lại PWM. Sau khi nhả PWM, vị trí thật có thể thay đổi do ngoại lực;
+chương trình không đo được sự thay đổi đó. Khi đã dịch chuyển càng bằng cách khác,
+cần chuẩn bị lại trạng thái khép và khởi động lại. Lỗi/ngắt giữa chừng làm mất vị
+trí tham chiếu và chặn lệnh càng tiếp theo tới khi khởi động lại.
 Các lệnh vẫn xếp hàng tới khi nhập `chay`, dừng bánh trước khi điều khiển càng,
 hủy phần còn lại khi lỗi/ngắt, và giải phóng riêng từng GPIO khi thoát.
+
+Nếu các góc trung gian vẫn làm càng bật tới hết hành trình, chia bước trong phần
+mềm chưa đủ để xử lý: cần xác định dải xung thực và phản ứng của servo. Chuyển
+chậm cũng không khắc phục việc góc đích vượt giới hạn cơ khí. Hướng dẫn
+[Adafruit về hiệu chỉnh servo](https://learn.adafruit.com/16-channel-pwm-servo-driver/using-the-adafruit-library)
+khuyến nghị tiếp cận dần và dừng trước giới hạn hành trình để tránh hỏng bánh răng.
 
 ### Chẩn đoán cổng servo chưa xác định GPIO
 

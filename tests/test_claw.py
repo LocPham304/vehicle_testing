@@ -1,4 +1,4 @@
-"""Direct 0/90 degree claw commands, without physical GPIO."""
+"""Timed gradual claw requests, without physical GPIO."""
 
 import importlib
 import io
@@ -28,58 +28,82 @@ class ClawTests(unittest.TestCase):
     def test_commands_accept_only_optional_seconds(self):
         self.assertEqual(parse_command(" MO_CANG "), ("claw_open", 2, 0))
         self.assertEqual(parse_command("dong_cang"), ("claw_grip", 2, 0))
-        self.assertEqual(parse_command("mo_cang 0.5"), ("claw_open", 0.5, 0))
+        self.assertEqual(parse_command("mo_cang 2.5"), ("claw_open", 2.5, 0))
         self.assertEqual(parse_command("dong_cang 3"), ("claw_grip", 3, 0))
         self.assertNotIn("cang_goc", HELP)
         for command in ("cang_goc", "cang_goc 40", "mo_cang 10 2", "dong_cang 10 2",
-                        "mo_cang 0", "dong_cang -1", "mo_cang nan", "dong_cang inf", "mo_cang abc"):
+                        "mo_cang 0", "mo_cang 0.5", "dong_cang -1", "mo_cang nan",
+                        "dong_cang inf", "mo_cang abc"):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 parse_command(command)
 
-    def test_either_direction_works_first_without_reference(self):
-        for first, angle in (("open", 0), ("grip", 90)):
-            with self.subTest(first=first):
-                output = Mock()
-                waits = []
-                claw = self.module.ClawController(lambda: output, sleeper=waits.append)
-                getattr(claw, first)()
-                output.set_angle.assert_called_once_with(angle)
-                self.assertEqual(waits, [2])
-                output.release.assert_called_once()
-
-    def test_endpoints_and_release_after_requested_time(self):
-        events = []
-        output = Mock()
-        output.set_angle.side_effect = lambda angle: events.append(("angle", angle))
-        output.release.side_effect = lambda: events.append(("release",))
-        claw = self.module.ClawController(lambda: output,
-                                          sleeper=lambda seconds: events.append(("wait", seconds)))
+    def test_starts_closed_without_gpio_and_initial_close_is_noop(self):
+        claw = self.claw()
+        self.factory.assert_not_called()
+        claw.grip()
+        self.factory.assert_not_called()
         claw.open()
-        claw.grip(0.75)
-        self.assertEqual(events, [("angle", 0), ("wait", 2), ("release",),
-                                  ("angle", 90), ("wait", 0.75), ("release",)])
+        self.assertEqual(self.output.angles[0], 90)
+        self.assertEqual(self.output.angles[-1], 0)
+        self.assertGreater(len(self.output.angles), 2)
 
-    def test_repeated_open_sends_again_after_release(self):
+    def test_open_and_close_reach_target_at_requested_time_with_gentle_ends(self):
+        elapsed = 0
+        writes = []
+        releases = []
+        output = Mock()
+        def wait(seconds):
+            nonlocal elapsed
+            elapsed += seconds
+        output.set_angle.side_effect = lambda angle: writes.append((elapsed, angle))
+        output.release.side_effect = lambda: releases.append(elapsed)
+        claw = self.module.ClawController(lambda: output, sleeper=wait)
+        for method, start, target, seconds in ((claw.open, 90, 0, 2), (claw.grip, 0, 90, 3)):
+            with self.subTest(target=target):
+                elapsed = 0
+                writes.clear()
+                releases.clear()
+                method(seconds)
+                self.assertEqual(writes[0], (0, start))
+                self.assertEqual(writes[-1][1], target)
+                self.assertAlmostEqual(writes[-1][0], seconds)
+                self.assertAlmostEqual(releases[0], seconds + 0.1)
+                angles = [angle for _, angle in writes]
+                self.assertGreater(len(angles), 90)
+                self.assertTrue(all(0 <= angle <= 90 for angle in angles))
+                differences = [b - a for a, b in zip(angles, angles[1:])]
+                self.assertTrue(all(delta * (target - start) >= 0 for delta in differences))
+                magnitudes = [abs(delta) for delta in differences]
+                self.assertLess(max(magnitudes), 2)
+                self.assertLess(magnitudes[0], max(magnitudes) / 10)
+                self.assertLess(magnitudes[-1], max(magnitudes) / 10)
+
+    def test_repeated_open_does_not_reissue_endpoint_or_move_again(self):
         claw = self.claw()
         claw.open()
+        angles = self.output.angles.copy()
+        waits = self.waits.copy()
         claw.open()
-        self.assertEqual(self.output.angles, [0, 0])
+        self.assertEqual(self.output.angles, angles)
+        self.assertEqual(self.waits, waits)
 
     def test_invalid_duration_never_opens_gpio(self):
         claw = self.claw()
-        for seconds in (0, -1, float("nan"), float("inf")):
+        for seconds in (0, 0.5, 1.999, -1, float("nan"), float("inf")):
             for method in (claw.open, claw.grip):
                 with self.subTest(seconds=seconds), self.assertRaises(ValueError):
                     method(seconds)
         self.factory.assert_not_called()
 
-    def test_interruption_releases_and_next_move_needs_no_reference(self):
+    def test_interruption_releases_and_blocks_later_moves_with_unknown_position(self):
         claw = self.claw(Mock(side_effect=[KeyboardInterrupt(), None]))
         with self.assertRaises(KeyboardInterrupt):
             claw.open()
         self.assertTrue(self.output.released)
-        claw.grip()
-        self.assertEqual(self.output.angles, [0, 90])
+        for method in (claw.open, claw.grip):
+            with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
+                method()
+        self.assertEqual(self.output.angles, [90])
 
     def test_close_is_lazy_idempotent_and_rejects_later_moves(self):
         claw = self.claw()
@@ -90,7 +114,7 @@ class ClawTests(unittest.TestCase):
             claw.open()
         self.factory.assert_not_called()
         used = self.claw()
-        used.grip()
+        used.open()
         used.close()
         self.assertTrue(self.output.closed)
 
@@ -105,14 +129,16 @@ class ClawTests(unittest.TestCase):
             self.assertTrue(all(value == 0 for value in states.values()))
             original_write(angle)
         self.output.set_angle = write
-        self.session(["tay_goc 40", "nang 10", "mo_cang 0.5", "ha 5", "dong_cang",
+        self.session(["tay_goc 40", "nang 10", "mo_cang 2.5", "ha 5", "dong_cang",
                       "chay", "chay", "thoat"], self.claw(), lift, motor)
         self.assertEqual(lift_output.angles, [40, 30, 35])
-        self.assertEqual(self.output.angles, [0, 90])
-        self.assertEqual(self.waits, [0.5, 2])
+        self.assertEqual(self.output.angles[0], 90)
+        self.assertIn(0, self.output.angles)
+        self.assertEqual(self.output.angles[-1], 90)
+        self.assertAlmostEqual(sum(self.waits), 4.7)
 
     def test_cancelled_draft_never_opens_gpio(self):
-        self.session(["mo_cang", "dong_cang 1", "dung", "chay", "thoat"], self.claw())
+        self.session(["mo_cang", "dong_cang 3", "dung", "chay", "thoat"], self.claw())
         self.factory.assert_not_called()
 
     def test_failed_claw_move_aborts_later_wheel_move(self):
@@ -148,7 +174,7 @@ class ClawTests(unittest.TestCase):
         output = Mock()
         with patch.object(self.module, "CLAW_HOLD_POSITION", True):
             claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
-        claw.grip()
+        claw.open()
         output.release.assert_not_called()
         lift = self.module.HandController(lambda: output, sleeper=lambda _: None)
         lift.set_angle(40)
@@ -160,6 +186,8 @@ class ClawTests(unittest.TestCase):
         claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
         with self.assertRaisesRegex(OSError, "release failed"):
             claw.open()
+        with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
+            claw.grip()
 
     def test_main_uses_confirmed_pins_and_closes_both(self):
         main = importlib.import_module("vehicle_testing.main")
@@ -169,7 +197,7 @@ class ClawTests(unittest.TestCase):
                 patch.object(main, "PCA9685Output"), \
                 patch.object(main, "HandController", side_effect=lambda factory: real_lift(factory, sleeper=lambda _: None)), \
                 patch.object(main, "ClawController", side_effect=lambda factory: real_claw(factory, sleeper=lambda _: None)), \
-                patch("builtins.input", side_effect=["tay_goc 40", "dong_cang", "chay", "thoat"]), \
+                patch("builtins.input", side_effect=["tay_goc 40", "mo_cang", "chay", "thoat"]), \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(main.main([]), 0)
         self.assertEqual([call.args for call in gpio.PWM.call_args_list], [(18, 50), (12, 50)])
