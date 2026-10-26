@@ -1,1 +1,1 @@
-"""Hardware-independent tests for stem_project."""
+"""Hardware-independent tests for vehicle_testing."""

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ENTRY_POINT = ROOT / "stem_project" / "main.py"
+ENTRY_POINT = ROOT / "vehicle_testing" / "main.py"
 
 
 class RecordingOutput:
@@ -115,7 +115,7 @@ class CommandLineTests(unittest.TestCase):
 
     def test_module_entry_point_also_works(self):
         result = subprocess.run(
-            [sys.executable, "-m", "stem_project.main", "--dry-run"],
+            [sys.executable, "-m", "vehicle_testing.main", "--dry-run"],
             input="dung\nthoat\n", capture_output=True, text=True,
             timeout=10, cwd=ROOT,
         )
@@ -124,8 +124,8 @@ class CommandLineTests(unittest.TestCase):
 
 class MotorControllerTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("stem_project.controller")
-        self.config = importlib.import_module("stem_project.config")
+        self.module = importlib.import_module("vehicle_testing.controller")
+        self.config = importlib.import_module("vehicle_testing.config")
         self.output = RecordingOutput()
 
     def controller(self, sleeper=lambda seconds: None, motors=None):
@@ -302,7 +302,7 @@ class MotorControllerTests(unittest.TestCase):
 
 class ScriptSessionTests(unittest.TestCase):
     def test_enter_only_saves_commands_until_chay_is_entered(self):
-        module = importlib.import_module("stem_project.main")
+        module = importlib.import_module("vehicle_testing.main")
         output = RecordingOutput()
         active_states = []
 
@@ -325,7 +325,7 @@ class ScriptSessionTests(unittest.TestCase):
         self.assertTrue(all(value == 0 for value in output.values.values()))
 
     def test_failed_first_command_does_not_start_remaining_commands(self):
-        module = importlib.import_module("stem_project.main")
+        module = importlib.import_module("vehicle_testing.main")
         output = RecordingOutput()
         output.failure = lambda channel, duty: channel == 6 and duty > 0
         controller = module.MotorController(output, sleeper=lambda seconds: None)
@@ -337,7 +337,7 @@ class ScriptSessionTests(unittest.TestCase):
         self.assertTrue(all(value == 0 for value in output.values.values()))
 
     def test_script_keeps_motors_off_for_the_requested_pause_then_resumes(self):
-        module = importlib.import_module("stem_project.main")
+        module = importlib.import_module("vehicle_testing.main")
         output = RecordingOutput()
         states = []
 
@@ -358,7 +358,7 @@ class ScriptSessionTests(unittest.TestCase):
         ])
 
     def test_interrupted_pause_does_not_run_remaining_commands(self):
-        module = importlib.import_module("stem_project.main")
+        module = importlib.import_module("vehicle_testing.main")
         output = RecordingOutput()
 
         def interrupted_wait(seconds):
@@ -376,19 +376,19 @@ class ScriptSessionTests(unittest.TestCase):
 
 class CommandParserTests(unittest.TestCase):
     def test_pause_accepts_fractional_and_long_durations_without_pwm(self):
-        parse = importlib.import_module("stem_project.main").parse_command
+        parse = importlib.import_module("vehicle_testing.main").parse_command
         self.assertEqual(parse(" NGUNG 0.5 "), ("pause", 0.5, 0.0))
         self.assertEqual(parse("ngung 86400"), ("pause", 86400.0, 0.0))
 
     def test_pause_rejects_missing_extra_or_invalid_duration(self):
-        parse = importlib.import_module("stem_project.main").parse_command
+        parse = importlib.import_module("vehicle_testing.main").parse_command
         for text in ("ngung", "ngung 0.5 0.3", "ngung abc", "ngung 0", "ngung -1", "ngung nan", "ngung inf"):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
                     parse(text)
 
     def test_valid_commands_keep_seconds_separate_from_speed(self):
-        parse = importlib.import_module("stem_project.main").parse_command
+        parse = importlib.import_module("vehicle_testing.main").parse_command
         self.assertEqual(parse(" TIEN 5 0.5 "), ("forward", 5.0, 0.5))
         self.assertEqual(parse("lui 1.5 0.3"), ("backward", 1.5, 0.3))
         self.assertEqual(parse("dung"), ("stop", 0.0, 0.0))
@@ -396,20 +396,20 @@ class CommandParserTests(unittest.TestCase):
         self.assertEqual(parse(" CHAY "), ("run", 0.0, 0.0))
 
     def test_omitted_pwm_defaults_to_50_percent_for_both_directions(self):
-        parse = importlib.import_module("stem_project.main").parse_command
+        parse = importlib.import_module("vehicle_testing.main").parse_command
         self.assertEqual(parse("tien 2 0.3"), ("forward", 2.0, 0.3))
         self.assertEqual(parse(" TIEN 2 "), ("forward", 2.0, 0.5))
         self.assertEqual(parse("lui 2"), ("backward", 2.0, 0.5))
 
     def test_omitted_pwm_does_not_allow_invalid_duration(self):
-        parse = importlib.import_module("stem_project.main").parse_command
+        parse = importlib.import_module("vehicle_testing.main").parse_command
         for text in ("tien nan", "tien inf", "lui 0", "lui -2", "tien abc"):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
                     parse(text)
 
     def test_malformed_commands_are_rejected(self):
-        parse = importlib.import_module("stem_project.main").parse_command
+        parse = importlib.import_module("vehicle_testing.main").parse_command
         for text in ("", "abc", "tien", "tien 2 0.5 extra", "lui abc 0.5", "dung 2", "thoat now", "chay 2"):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
@@ -442,7 +442,7 @@ class HardwareOutputTests(unittest.TestCase):
             "busio": SimpleNamespace(I2C=lambda scl, sda: bus),
             "adafruit_pca9685": SimpleNamespace(PCA9685=lambda bus, address: chip),
         }
-        output_type = importlib.import_module("stem_project.controller").PCA9685Output
+        output_type = importlib.import_module("vehicle_testing.controller").PCA9685Output
         with patch.dict(sys.modules, modules):
             with self.assertRaisesRegex(OSError, "frequency setup failed"):
                 output_type()
@@ -461,7 +461,7 @@ class HardwareOutputTests(unittest.TestCase):
             "busio": SimpleNamespace(I2C=lambda scl, sda: bus),
             "adafruit_pca9685": SimpleNamespace(PCA9685=lambda bus, address: chip),
         }
-        output_type = importlib.import_module("stem_project.controller").PCA9685Output
+        output_type = importlib.import_module("vehicle_testing.controller").PCA9685Output
         with patch.dict(sys.modules, modules):
             output = output_type()
             with self.assertRaisesRegex(OSError, "chip cleanup failed"):

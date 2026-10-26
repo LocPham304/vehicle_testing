@@ -11,6 +11,13 @@ PWM_FREQUENCY_HZ = 1000
 DEFAULT_SPEED = 0.5  # PWM fraction used whenever a movement omits its speed.
 DIRECTION_CHANGE_DELAY_SECONDS = 0.003
 
+# Open-loop turning: these are initial estimates from the old firmware,
+# NOT measured angles on this vehicle. Calibrate each side on the actual floor.
+# Keep this PWM fixed while calibrating; changing it invalidates both factors.
+TURN_SPEED = 0.5
+TURN_LEFT_SECONDS_PER_DEGREE = 0.0179
+TURN_RIGHT_SECONDS_PER_DEGREE = 0.0179
+
 
 @dataclass(frozen=True)
 class MotorPins:

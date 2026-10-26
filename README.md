@@ -1,8 +1,9 @@
-# Điều khiển robot tiến/lùi theo thời gian
+# Điều khiển robot tiến/lùi, chạy ngang và quay Mecanum
 
 Chương trình Python dựa trên `pi4-source/test-banh-xe.py`, dùng thư viện
 Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy cả bốn bánh
-theo thời gian: soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
+tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
+soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
 
 ## Cấu trúc
@@ -13,20 +14,22 @@ rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đườ
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
+| `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
+| `tests/test_strafing.py` | Kiểm tra chiều chạy ngang, PWM, xếp lệnh và dừng khi lỗi hoặc bị ngắt |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
 ## Thử trên máy tính, không cần Raspberry Pi
 
 ```sh
-python stem_project/main.py --dry-run
+python vehicle_testing/main.py --dry-run
 ```
 
 Không cần cài thư viện phần cứng cho chế độ này. Thời gian chờ vẫn diễn ra
 đúng theo lệnh để dễ quan sát luồng chạy. Thêm `--verbose` để xem các kênh:
 
 ```sh
-python stem_project/main.py --dry-run --verbose
+python vehicle_testing/main.py --dry-run --verbose
 ```
 
 ## Chạy trên Raspberry Pi
@@ -35,10 +38,10 @@ Bật I²C trên Raspberry Pi và dùng môi trường Python có hỗ trợ Ada
 Ví dụ tạo môi trường riêng trên Raspberry Pi OS:
 
 ```sh
-python3 -m venv --system-site-packages stem_project/.venv
-source stem_project/.venv/bin/activate
-python -m pip install -r stem_project/requirements.txt
-python stem_project/main.py
+python3 -m venv --system-site-packages vehicle_testing/.venv
+source vehicle_testing/.venv/bin/activate
+python -m pip install -r vehicle_testing/requirements.txt
+python vehicle_testing/main.py
 ```
 
 Chương trình mở kết nối và gửi lệnh dừng khi khởi động; chỉ chạy bánh khi nhận
@@ -55,7 +58,7 @@ lui 1
 chay
 ```
 
-**Enter sau mỗi dòng `tien`/`lui`/`ngung` chỉ lưu lệnh, xe chưa chạy.** Chương trình
+**Enter sau mỗi dòng chuyển động hoặc `ngung` chỉ lưu lệnh, xe chưa chạy.** Chương trình
 báo `Da luu lenh #...` để xác nhận đã thêm vào kịch bản. Khi nhập đủ, gõ
 `chay` rồi Enter để thực hiện lần lượt từ trên xuống. Mỗi lệnh gửi lệnh dừng
 trước khi sang lệnh tiếp theo. Cả bốn lệnh trên đều dùng PWM **50%**.
@@ -100,7 +103,7 @@ thoat
 - `dung`: gửi lại lệnh dừng các kênh động cơ và xóa toàn bộ kịch bản đang soạn.
 - `thoat`: hủy kịch bản chưa chạy, gửi lệnh dừng và đóng kết nối.
 
-Thứ tự tham số là **chiều → số giây → PWM tùy chọn**. Mỗi lần bỏ trống PWM đều
+Với lệnh tiến/lùi, thứ tự tham số là **chiều → số giây → PWM tùy chọn**. Mỗi lần bỏ trống PWM đều
 dùng 50%, không ghi nhớ PWM của lệnh trước. Giá trị mặc định dùng chung nằm ở
 `DEFAULT_SPEED = 0.5` trong `config.py`, áp dụng cả khi gọi `MotorController.move()`
 mà không truyền `speed`. Số giây phải hữu hạn và lớn hơn 0; PWM phải hữu hạn và
@@ -116,6 +119,134 @@ không thêm vào danh sách; các dòng hợp lệ trước đó vẫn được
 Lỗi khi thực hiện một lệnh sẽ hủy các lệnh còn lại và thoát phiên.
 Ctrl+C trả mã thoát 130; lỗi phần
 cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
+
+## Chạy ngang trái/phải bằng bánh Mecanum
+
+Lệnh `ngang_trai <giây> [PWM]` và `ngang_phai <giây> [PWM]` yêu cầu cả thân xe
+dịch ngang theo hướng trái/phải của xe, giữ nguyên hướng đầu xe. Đây là chuyển
+động trượt ngang, khác với `trai`/`phai` yêu cầu xoay thân xe.
+
+Thử từng chiều riêng trên mặt sàn bằng thời gian ngắn:
+
+```text
+ngang_trai 0.5 0.3
+chay
+```
+
+Quan sát xong mới thử:
+
+```text
+ngang_phai 0.5 0.3
+chay
+```
+
+`0.5` là **giây**, không phải cm hoặc độ; `0.3` là PWM 30%. Bỏ PWM thì mỗi lệnh
+dùng `DEFAULT_SPEED`, hiện là 50%, không kế thừa PWM của lệnh trước.
+Thời gian phải dương và hữu hạn; PWM trong `(0, 1]`, cùng quy tắc với tiến/lùi.
+
+Với kiểu lắp con lăn Mecanum dạng X như tài liệu và chiều tiến vật lý đã xác nhận:
+
+| Lệnh | FR | FL | RL | RR |
+| --- | --- | --- | --- | --- |
+| `ngang_trai` | Tiến | Lùi | Tiến | Lùi |
+| `ngang_phai` | Lùi | Tiến | Lùi | Tiến |
+
+Cả bốn bánh được cấp cùng mức PWM. Kiểm tra chiều từng bánh khi kê xe trước,
+rồi đặt xuống sàn để kiểm tra thân xe có thực sự trượt ngang. Nếu xe xoay hoặc
+đi chéo, cần kiểm tra cách lắp con lăn, vị trí và chiều từng bánh, khả năng khởi
+động ở PWM đang dùng. Chương trình chưa đo quãng đường hoặc giữ hướng bằng cảm biến,
+nên bánh trượt, tải và mặt sàn có thể làm xe lệch hướng.
+
+Có thể ghép với tiến/lùi, xoay và nghỉ:
+
+```text
+tien 0.5 0.3
+ngung 1
+ngang_trai 0.5 0.3
+ngung 1
+ngang_phai 0.5 0.3
+chay
+```
+
+`dung` xóa kịch bản đang soạn; khi đang chạy, nhấn **Ctrl+C** để yêu cầu dừng
+và thoát. Hết đầu vào hoặc `thoat` không tự chạy các lệnh còn chờ.
+
+## Quay trái/phải tại chỗ bằng bánh Mecanum
+
+Nhập `trai <độ>` hoặc `phai <độ>`, sau đó nhập `chay`. Ví dụ thử riêng
+từng chiều trước, quan sát xe rồi mới soạn kịch bản kết hợp:
+
+```text
+trai 15
+chay
+```
+
+```text
+phai 15
+chay
+```
+
+Góc là góc đổi hướng của **thân xe**, nhìn từ trên xuống; trái là ngược chiều
+kim đồng hồ, phải là cùng chiều kim đồng hồ. Xe xoay tại chỗ, không phải trượt ngang.
+Với chiều tiến vật lý đã xác nhận cho từng bánh:
+
+| Lệnh | FR | FL | RL | RR |
+| --- | --- | --- | --- | --- |
+| `trai` | Tiến | Lùi | Lùi | Tiến |
+| `phai` | Lùi | Tiến | Tiến | Lùi |
+
+Lệnh quay dùng **PWM cố định theo `TURN_SPEED` trong `config.py`**, độc lập với PWM của
+lệnh tiến/lùi/chạy ngang. Không nhập PWM riêng: `trai 90 0.5` bị từ chối để tránh dùng hệ số
+hiệu chỉnh ở sai mức PWM. Góc phải dương và hữu hạn; chấp nhận số thập phân như
+`trai 15.5`, từ chối `0`, số âm, `nan` và `inf`.
+
+Đây là điều khiển theo thời gian, **chưa đọc encoder hoặc cảm biến góc**:
+
+```text
+thời gian chạy motor = góc yêu cầu × hệ số giây/độ
+```
+
+Hai hệ số trong `config.py` ban đầu tham khảo source cũ là `0.0133`.
+Cấu hình hiện tại đã được thay đổi thành:
+
+```python
+TURN_SPEED = 0.5
+TURN_LEFT_SECONDS_PER_DEGREE = 0.0179
+TURN_RIGHT_SECONDS_PER_DEGREE = 0.0179
+```
+
+Với cấu hình trên, yêu cầu 90° sẽ cấp PWM khoảng 1,611 giây, không đảm bảo thân xe quay đúng
+90°. Xác nhận chiều quay với xung ngắn trước; sau đó đặt xe trên mặt sàn sử dụng,
+đánh dấu hướng ban đầu và đo góc sau khi xe dừng. Hiệu chỉnh riêng từng chiều:
+
+```text
+hệ số mới = hệ số cũ × góc yêu cầu / góc thực tế đo được
+```
+
+Ví dụ minh họa với hệ số cũ `0.0133`: yêu cầu quay trái 90° nhưng đo được 75°:
+`TURN_LEFT_SECONDS_PER_DEGREE = 0.0133 × 90 / 75 = 0.01596`.
+Đo lặp lại và kiểm tra thêm các góc 15°, 45°, 90°. Nếu bánh không khởi động hoặc
+góc đo bằng 0, kiểm tra chuyển động trước, không áp dụng phép chia trên.
+Đổi `TURN_SPEED`, tải, mặt sàn hoặc tình trạng pin có thể cần hiệu chỉnh lại.
+Góc nhỏ dễ bị ảnh hưởng bởi thời gian khởi động và quán tính; một hệ số tuyến tính
+không đảm bảo chính xác ở mọi góc. Nếu cần độ chính xác cao hơn, cần bổ sung phản hồi góc.
+
+Các lệnh có thể kết hợp và vẫn chỉ chạy sau `chay`:
+
+```text
+tien 0.5 0.3
+ngung 1
+trai 15
+ngung 1
+phai 15
+ngung 1
+lui 0.5 0.3
+chay
+```
+
+`ngung` là khoảng nghỉ tùy chọn. Khi đang chạy, **Ctrl+C** yêu cầu dừng motor
+và thoát; lệnh `dung` dùng lúc đang soạn để xóa danh sách. Thử chiều quay khi kê
+bánh giúp kiểm tra tín hiệu, nhưng hiệu chỉnh góc phải thực hiện khi xe tiếp xúc mặt sàn.
 
 ## Kiểm tra và hiệu chỉnh phần cứng
 
@@ -157,7 +288,7 @@ gửi lệnh dừng. Chương trình chưa đọc encoder hoặc có cơ chế d
 ## Kiểm tra phần mềm
 
 ```sh
-python -m unittest discover -s stem_project/tests -v
+python -m unittest discover -s vehicle_testing/tests -v
 ```
 
 Các bài kiểm tra dùng bộ ghi đầu ra trong bộ nhớ, không kết nối I²C.
@@ -172,13 +303,17 @@ Kết quả này không thay thế kiểm tra trên xe thực tế.
 Giao diện khác có thể sử dụng lại bộ điều khiển mà không đọc lệnh terminal:
 
 ```python
-from stem_project.controller import MotorController, PCA9685Output
+from vehicle_testing.controller import MotorController, PCA9685Output
 
 controller = MotorController(PCA9685Output())
 try:
     controller.move(direction="forward", seconds=2)  # PWM mặc định 50%
     controller.pause(seconds=0.5)
     controller.move(direction="backward", seconds=1, speed=0.3)
+    controller.strafe(direction="left", seconds=0.5, speed=0.3)
+    controller.strafe(direction="right", seconds=0.5)  # PWM mặc định 50%
+    controller.turn_left(angle=15)   # Góc ước lượng, PWM cố định TURN_SPEED
+    controller.turn_right(angle=15)
 finally:
     controller.close()
 ```

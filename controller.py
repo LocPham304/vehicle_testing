@@ -12,6 +12,9 @@ from .config import (
     I2C_ADDRESS,
     MOTORS,
     PWM_FREQUENCY_HZ,
+    TURN_LEFT_SECONDS_PER_DEGREE,
+    TURN_RIGHT_SECONDS_PER_DEGREE,
+    TURN_SPEED,
     MotorPins,
 )
 
@@ -86,8 +89,26 @@ def validate_motion(direction: str, seconds: float, speed: float) -> None:
     if direction not in ("forward", "backward"):
         raise ValueError("Chieu chay phai la forward hoac backward.")
     validate_duration(seconds)
+    validate_speed(speed)
+
+
+def validate_speed(speed: float) -> None:
     if not math.isfinite(speed) or not 0 < speed <= 1:
         raise ValueError("PWM phai nam trong khoang (0, 1], vi du 0.5 = 50%.")
+
+
+def validate_turn(direction: str, angle: float) -> None:
+    if direction not in ("left", "right"):
+        raise ValueError("Chieu quay phai la left hoac right.")
+    if not math.isfinite(angle) or angle <= 0:
+        raise ValueError("Goc quay phai la so huu han lon hon 0, don vi do.")
+
+
+def validate_strafe(direction: str, seconds: float, speed: float) -> None:
+    if direction not in ("left", "right"):
+        raise ValueError("Chieu chay ngang phai la left hoac right.")
+    validate_duration(seconds)
+    validate_speed(speed)
 
 
 class MotorController:
@@ -146,6 +167,53 @@ class MotorController:
 
     def move(self, direction: str, seconds: float, speed: float = DEFAULT_SPEED) -> None:
         validate_motion(direction, seconds, speed)
+        directions = {name: direction == "forward" for name in self._motors}
+        self._drive_for(directions, seconds, speed, "TIEN" if direction == "forward" else "LUI")
+
+    def strafe(self, direction: str, seconds: float, speed: float = DEFAULT_SPEED) -> None:
+        """Slide left/right relative to the chassis, without commanding rotation."""
+        validate_strafe(direction, seconds, speed)
+        if set(self._motors) != {"FR", "FL", "RL", "RR"}:
+            raise ValueError("Chay ngang Mecanum can du bon banh FR, FL, RL, RR.")
+        # Physical directions for the documented X roller arrangement.
+        directions = {
+            "FR": direction == "left", "FL": direction == "right",
+            "RL": direction == "left", "RR": direction == "right",
+        }
+        label = "NGANG TRAI" if direction == "left" else "NGANG PHAI"
+        self._drive_for(directions, seconds, speed, label)
+
+    def turn_left(self, angle: float) -> None:
+        """Estimate a counterclockwise chassis turn, viewed from above."""
+        self.turn("left", angle)
+
+    def turn_right(self, angle: float) -> None:
+        """Estimate a clockwise chassis turn, viewed from above."""
+        self.turn("right", angle)
+
+    def turn(self, direction: str, angle: float) -> None:
+        """Rotate in place using time calibration, without measuring heading."""
+        validate_turn(direction, angle)
+        if set(self._motors) != {"FR", "FL", "RL", "RR"}:
+            raise ValueError("Quay Mecanum can du bon banh FR, FL, RL, RR.")
+        factor = TURN_LEFT_SECONDS_PER_DEGREE if direction == "left" else TURN_RIGHT_SECONDS_PER_DEGREE
+        if not math.isfinite(factor) or factor <= 0:
+            raise ValueError("He so giay/do phai la so huu han lon hon 0.")
+        seconds = angle * factor
+        validate_duration(seconds)
+        validate_speed(TURN_SPEED)
+        # Physical forward/backward; apply electrical inversion only in _drive_for.
+        right_side_forward = direction == "left"
+        directions = {
+            "FR": right_side_forward, "RR": right_side_forward,
+            "FL": not right_side_forward, "RL": not right_side_forward,
+        }
+        label = "QUAY TRAI" if direction == "left" else "QUAY PHAI"
+        self._drive_for(directions, seconds, TURN_SPEED, f"{label} {angle:g} do (uoc luong)")
+
+    def _drive_for(
+        self, directions: Mapping[str, bool], seconds: float, speed: float, label: str,
+    ) -> None:
         if self._closed:
             raise RuntimeError("Bo dieu khien da dong.")
 
@@ -155,7 +223,7 @@ class MotorController:
 
             # Set the whole group's direction before enabling any PWM.
             for name, pins in self._motors.items():
-                forward = (direction == "forward") != pins.inverted
+                forward = directions[name] != pins.inverted
                 self._set_channel(pins.in1, 1.0 if forward else 0.0)
                 self._set_channel(pins.in2, 0.0 if forward else 1.0)
                 logger.debug("%s: IN1=%d IN2=%d", name, int(forward), int(not forward))
@@ -164,7 +232,6 @@ class MotorController:
             for pins in self._motors.values():
                 self._set_channel(pins.pwm, speed)
 
-            label = "TIEN" if direction == "forward" else "LUI"
             logger.info("%s trong %g giay, PWM %.0f%%", label, seconds, speed * 100)
             self._sleep(seconds)
         finally:
