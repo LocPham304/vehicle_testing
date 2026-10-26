@@ -12,8 +12,6 @@ from .config import (
     I2C_ADDRESS,
     MOTORS,
     PWM_FREQUENCY_HZ,
-    STRAFE_LEFT_GAINS,
-    STRAFE_RIGHT_GAINS,
     TURN_LEFT_SECONDS_PER_DEGREE,
     TURN_RIGHT_SECONDS_PER_DEGREE,
     TURN_SPEED,
@@ -177,21 +175,13 @@ class MotorController:
         validate_strafe(direction, seconds, speed)
         if set(self._motors) != {"FR", "FL", "RL", "RR"}:
             raise ValueError("Chay ngang Mecanum can du bon banh FR, FL, RL, RR.")
-        gains = STRAFE_LEFT_GAINS if direction == "left" else STRAFE_RIGHT_GAINS
-        if not isinstance(gains, Mapping) or set(gains) != set(self._motors):
-            raise ValueError("He so chay ngang can du va chi gom FR, FL, RL, RR.")
-        gains = dict(gains)
-        if any(type(gain) not in (int, float) or not math.isfinite(gain) or not 0 < gain <= 1
-               for gain in gains.values()):
-            raise ValueError("He so PWM chay ngang phai la so huu han trong (0, 1].")
-        wheel_speeds = {name: speed * gains[name] for name in self._motors}
         # Physical directions for the documented X roller arrangement.
         directions = {
             "FR": direction == "left", "FL": direction == "right",
             "RL": direction == "left", "RR": direction == "right",
         }
         label = "NGANG TRAI" if direction == "left" else "NGANG PHAI"
-        self._drive_for(directions, seconds, speed, label, wheel_speeds=wheel_speeds)
+        self._drive_for(directions, seconds, speed, label)
 
     def turn_left(self, angle: float) -> None:
         """Estimate a counterclockwise chassis turn, viewed from above."""
@@ -223,7 +213,6 @@ class MotorController:
 
     def _drive_for(
         self, directions: Mapping[str, bool], seconds: float, speed: float, label: str,
-        *, wheel_speeds: Mapping[str, float] | None = None,
     ) -> None:
         if self._closed:
             raise RuntimeError("Bo dieu khien da dong.")
@@ -240,14 +229,10 @@ class MotorController:
                 logger.debug("%s: IN1=%d IN2=%d", name, int(forward), int(not forward))
 
             self._sleep(DIRECTION_CHANGE_DELAY_SECONDS)
-            for name, pins in self._motors.items():
-                self._set_channel(pins.pwm, speed if wheel_speeds is None else wheel_speeds[name])
+            for pins in self._motors.values():
+                self._set_channel(pins.pwm, speed)
 
             logger.info("%s trong %g giay, PWM %.0f%%", label, seconds, speed * 100)
-            if wheel_speeds is not None:
-                logger.info("PWM tung banh (sau hieu chinh): %s", ", ".join(
-                    f"{name}={wheel_speeds[name]:.1%}" for name in self._motors
-                ))
             self._sleep(seconds)
         finally:
             # Also covers partial startup and Ctrl+C during the timed wait.

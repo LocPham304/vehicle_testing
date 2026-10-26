@@ -9,7 +9,7 @@ from dataclasses import dataclass
 I2C_ADDRESS = 0x40
 PWM_FREQUENCY_HZ = 1000
 DEFAULT_SPEED = 0.5  # PWM fraction used whenever a movement omits its speed.
-DIRECTION_CHANGE_DELAY_SECONDS = 0.003
+DIRECTION_CHANGE_DELAY_SECONDS = 0.5
 
 # Open-loop turning: these are initial estimates from the old firmware,
 # NOT measured angles on this vehicle. Calibrate each side on the actual floor.
@@ -17,13 +17,6 @@ DIRECTION_CHANGE_DELAY_SECONDS = 0.003
 TURN_SPEED = 0.5
 TURN_LEFT_SECONDS_PER_DEGREE = 0.0089
 TURN_RIGHT_SECONDS_PER_DEGREE = 0.0089
-
-# Sideways PWM trim only. Neutral defaults; these are NOT measured corrections.
-# Actual wheel PWM = command PWM * gain. Use a finite number in (0, 1].
-# Reduce a stronger wheel rather than exceeding the requested command PWM.
-# Tune left/right independently on the floor at a fixed command PWM.
-STRAFE_LEFT_GAINS = {"FR": 1.0, "FL": 1.0, "RL": 1.0, "RR": 1.0}
-STRAFE_RIGHT_GAINS = {"FR": 1.0, "FL": 1.0, "RL": 1.0, "RR": 1.0}
 
 
 @dataclass(frozen=True)

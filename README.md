@@ -16,7 +16,6 @@ rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đườ
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
 | `tests/test_strafing.py` | Kiểm tra chiều chạy ngang, PWM, xếp lệnh và dừng khi lỗi hoặc bị ngắt |
-| `tests/test_strafe_calibration.py` | Kiểm tra bù PWM riêng từng bánh, cấu hình sai và giữ nguyên các chế độ khác |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
@@ -152,8 +151,7 @@ Với kiểu lắp con lăn Mecanum dạng X như tài liệu và chiều tiến
 | `ngang_trai` | Tiến | Lùi | Tiến | Lùi |
 | `ngang_phai` | Lùi | Tiến | Lùi | Tiến |
 
-Mặc định cả bốn bánh được cấp cùng mức PWM; phần hiệu chỉnh bên dưới cho phép
-giảm riêng từng bánh trong chế độ chạy ngang. Kiểm tra chiều từng bánh khi kê xe trước,
+Cả bốn bánh được cấp cùng mức PWM. Kiểm tra chiều từng bánh khi kê xe trước,
 rồi đặt xuống sàn để kiểm tra thân xe có thực sự trượt ngang. Nếu xe xoay hoặc
 đi chéo, cần kiểm tra cách lắp con lăn, vị trí và chiều từng bánh, khả năng khởi
 động ở PWM đang dùng. Chương trình chưa đo quãng đường hoặc giữ hướng bằng cảm biến,
@@ -172,70 +170,6 @@ chay
 
 `dung` xóa kịch bản đang soạn; khi đang chạy, nhấn **Ctrl+C** để yêu cầu dừng
 và thoát. Hết đầu vào hoặc `thoat` không tự chạy các lệnh còn chờ.
-
-### Hiệu chỉnh PWM riêng cho chạy ngang
-
-Video thực tế cho thấy xe dịch ngang kèm lệch dọc và thay đổi hướng thân xe.
-Người vận hành đã xác nhận các bánh đều tạo lực, con lăn quay tự do và bốn bánh
-tiếp xúc sàn đều. Những điều này chưa xác nhận tốc độ từng bánh bằng nhau.
-
-Trong `config.py` có hai bảng hiệu chỉnh độc lập:
-
-```python
-STRAFE_LEFT_GAINS = {"FR": 1.0, "FL": 1.0, "RL": 1.0, "RR": 1.0}
-STRAFE_RIGHT_GAINS = {"FR": 1.0, "FL": 1.0, "RL": 1.0, "RR": 1.0}
-```
-
-Đây là **giá trị trung tính**, không phải bộ hệ số đã đo trên xe. Khi tất cả bằng
-`1.0`, tín hiệu đầu ra giữ nguyên như bản trước. Công thức:
-
-```text
-PWM từng bánh = PWM của lệnh × hệ số của bánh trong bảng tương ứng
-```
-
-Ví dụ `ngang_trai 3 0.5` với hệ số FR bằng `0.95` sẽ cấp FR 47,5%, các bánh có
-hệ số `1.0` vẫn nhận 50%. Log `PWM tung banh (sau hieu chinh)` hiển thị mức PWM
-yêu cầu sau tính toán; đây không phải tốc độ thực đo bằng encoder.
-
-Hệ số phải là số hữu hạn trong `(0, 1]`, đủ đúng bốn tên `FR/FL/RL/RR`.
-Thiếu/thừa tên, số âm, `0`, `nan`, `inf`, chuỗi, boolean hoặc hệ số lớn hơn `1`
-đều bị từ chối trước khi ghi đầu ra chuyển động. Chỉ cho giảm PWM của bánh mạnh
-hơn, không tăng vượt PWM lệnh. Nếu giảm làm bánh không khởi động, khôi phục giá
-trị trước đó và đánh giá lại thay vì tiếp tục giảm.
-
-Chỉ lệnh ngang sử dụng các hệ số này. Tiến/lùi và quay tại chỗ vẫn dùng đúng PWM
-cũ, kể cả khi bảng hiệu chỉnh ngang bị nhập sai. Chiều quay và `inverted` của từng
-bánh được giữ nguyên; cơ chế dừng khi lỗi/Ctrl+C vẫn áp dụng.
-
-Quy trình hiệu chỉnh trên mặt sàn:
-
-1. Giữ nguyên PWM lệnh (ví dụ `0.5`), tải và mặt sàn. Đánh dấu hướng đầu xe,
-   vị trí xuất phát; quay từ vị trí cố định thấy đường ron gạch.
-2. Bắt đầu với hệ số `1.0`. Thay một nhóm bánh mỗi lần, bước nhỏ khoảng 2–5%.
-   Thử ngắn trước, rồi chạy `ngang_trai 3 0.5` để so sánh độ lệch và hướng thân xe.
-3. Sửa ngay `config.py` trên Pi đang chạy, hoặc chép lại file đã sửa từ máy tính.
-   **Thoát và khởi động lại chương trình** sau mỗi lần sửa để nạp hệ số mới.
-4. Giữ thay đổi nếu sai lệch giảm lặp lại qua vài lần thử; nếu sai lệch tăng,
-   khôi phục giá trị trước đó. Lưu lại từng bộ hệ số và kết quả.
-5. Hiệu chỉnh thay đổi hướng thân xe trước, sau đó mới đánh giá lệch tiến/lùi.
-   Hiệu chỉnh `STRAFE_RIGHT_GAINS` riêng cho chiều phải, không tự sao chép chiều trái.
-
-Với `ngang_trai` và mô hình lắp bánh hiện tại, bảng dưới là **hướng thử theo mô hình**,
-không phải kết luận đã đo được motor nào nhanh hơn:
-
-| Quan sát | Nhóm có thể thử giảm cùng một lượng nhỏ |
-| --- | --- |
-| Thân xe xoay trái (ngược chiều kim đồng hồ nhìn từ trên) | FR và FL |
-| Thân xe xoay phải | RL và RR |
-| Hướng thân đã ổn định nhưng còn dịch về phía trước | FR và RL |
-| Hướng thân đã ổn định nhưng còn dịch về phía sau | FL và RR |
-
-Ví dụ thử giảm nhóm trước 5% khi thân xoay trái: đặt FR/FL bằng `0.95`, RL/RR
-giữ `1.0` trong `STRAFE_LEFT_GAINS`, khởi động lại và so sánh cùng lệnh cũ.
-Không áp dụng đồng thời nhiều dòng của bảng ngay lần đầu. Thay đổi có thể ảnh
-hưởng lẫn nhau ngoài thực tế; nếu không cải thiện, cần đo vận tốc bánh và kiểm
-tra lại mô hình/cơ khí. Đây là bù thủ công theo điều kiện thử, chưa phải giữ hướng
-tự động bằng cảm biến và chưa xác nhận đã khắc phục sai lệch trên xe.
 
 ## Quay trái/phải tại chỗ bằng bánh Mecanum
 
