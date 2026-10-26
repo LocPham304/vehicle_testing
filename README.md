@@ -16,7 +16,7 @@ rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đườ
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
 | `tests/test_strafing.py` | Kiểm tra chiều chạy ngang, PWM, xếp lệnh và dừng khi lỗi hoặc bị ngắt |
-| `tests/test_diagonal.py` | Kiểm tra chéo trên trái: chỉ FR/RL chạy, FL/RR tắt, xếp lệnh và dừng |
+| `tests/test_diagonal.py` | Kiểm tra bốn hướng chéo: cặp bánh, chiều quay, bánh tắt, xếp lệnh và dừng |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
@@ -172,39 +172,41 @@ chay
 `dung` xóa kịch bản đang soạn; khi đang chạy, nhấn **Ctrl+C** để yêu cầu dừng
 và thoát. Hết đầu vào hoặc `thoat` không tự chạy các lệnh còn chờ.
 
-## Chạy chéo trên trái 45 độ (3π/4)
+## Chạy chéo 45 độ theo bốn hướng
 
-Lệnh `cheo_tren_trai <giây> [PWM]` yêu cầu xe dịch chéo về phía trước và bên trái
-theo hướng thân xe, giữ hướng đầu xe. Nhìn từ trên xuống, trục x hướng phải,
-trục y hướng đầu xe: góc này là **3π/4 = 135° tính từ trục x**, tương đương
-chéo trái 45° so với hướng tiến. Đây là góc hướng dịch chuyển.
+Các lệnh `tren_trai`, `tren_phai`, `duoi_trai`, `duoi_phai`
+yêu cầu xe dịch chéo theo hướng thân xe, giữ hướng đầu xe. Nhìn từ trên xuống,
+trục x hướng phải, trục y hướng đầu xe. Góc được tính từ trục x; đây là góc
+hướng dịch chuyển. `Trên` là về phía đầu xe, `dưới` là về phía sau xe.
 
 Theo bảng và công thức trong [How a Mecanum Drive Works của Seamonsters 2605](https://seamonsters-2605.github.io/archive/mecanum/):
 
 ```text
-FR = RL = sin(3π/4 - π/4) × PWM = PWM
-FL = RR = sin(3π/4 + π/4) × PWM = 0
+FR = RL = sin(góc - π/4) × PWM
+FL = RR = sin(góc + π/4) × PWM
 ```
 
-| Bánh | Chiều vật lý | PWM |
-| --- | --- | --- |
-| FR – trước phải | Tiến | PWM lệnh |
-| FL – trước trái | Không cấp công suất | 0 |
-| RL – sau trái | Tiến | PWM lệnh |
-| RR – sau phải | Không cấp công suất | 0 |
+| Lệnh | Góc | FR | FL | RL | RR |
+| --- | --- | --- | --- | --- | --- |
+| `tren_trai` | 3π/4 = 135° | Tiến | 0 | Tiến | 0 |
+| `tren_phai` | π/4 = 45° | 0 | Tiến | 0 | Tiến |
+| `duoi_trai` | −3π/4 = −135° | 0 | Lùi | 0 | Lùi |
+| `duoi_phai` | −π/4 = −45° | Lùi | 0 | Lùi | 0 |
 
-Hai bánh FL/RR có cả PWM, IN1 và IN2 bằng 0. Trạng thái thả trôi hoặc hãm
-phụ thuộc driver thực tế. `inverted` vẫn áp dụng cho FR/RL để giữ đúng chiều tiến vật lý.
-Chỉ hai bánh FR/RL được cấp công suất theo bảng trên.
+Mỗi lệnh cấp cùng mức PWM cho hai bánh hoạt động. Hai bánh ghi `0` có cả PWM,
+IN1 và IN2 bằng 0. Trạng thái thả trôi hoặc hãm phụ thuộc driver thực tế.
+`inverted` vẫn áp dụng cho các bánh hoạt động để giữ đúng chiều vật lý.
+Góc −3π/4 tương đương 5π/4; góc −π/4 tương đương 7π/4 trong bảng nguồn.
 
-Chạy chương trình rồi nhập:
+Chạy chương trình rồi thử riêng từng hướng. Ví dụ trên phải:
 
 ```text
-cheo_tren_trai 0.5 0.3
+tren_phai 0.5 0.3
 chay
 ```
 
-Lệnh trên chạy chéo trên trái 0,5 giây ở PWM 30% rồi yêu cầu dừng.
+Lệnh trên chạy chéo trên phải 0,5 giây ở PWM 30% rồi yêu cầu dừng.
+Thay tên lệnh bằng `duoi_trai` hoặc `duoi_phai` để thử hai hướng lùi.
 Bỏ PWM thì dùng `DEFAULT_SPEED`, hiện là 50%. Enter chỉ lưu lệnh;
 có thể ghép với tiến/lùi, ngang, quay và nghỉ. Dùng `dung` để xóa kịch bản
 chưa chạy; Ctrl+C yêu cầu dừng và thoát khi đang thực hiện.
@@ -219,7 +221,8 @@ Thời gian cấp PWM chưa bao gồm hai khoảng chờ đổi chiều theo
 `DIRECTION_CHANGE_DELAY_SECONDS`. Phần mềm chưa đo hướng hoặc quãng đường;
 kết quả test không xác nhận xe thực tế đi đúng 45°. Cần kiểm tra chiều bánh
 khi kê xe và hướng dịch chuyển trên sàn, với kiểu lắp Mecanum dạng X phù hợp.
-Hiện chỉ triển khai hướng chéo trên trái.
+Người dùng đã xác nhận hướng trên trái chạy ổn trên xe. Ba hướng mới còn cần
+kiểm tra thực tế; xác nhận này chưa phải phép đo góc chính xác.
 
 ## Quay trái/phải tại chỗ bằng bánh Mecanum
 
@@ -343,7 +346,8 @@ python -m unittest discover -s vehicle_testing/tests -v
 
 Các bài kiểm tra dùng bộ ghi đầu ra trong bộ nhớ, không kết nối I²C.
 Chúng kiểm tra bốn bánh cùng được cấp PWM ở các lệnh cũ, chỉ FR/RL được cấp PWM
-khi chạy chéo trên trái, đảo chiều, mặc định PWM, nghỉ với đầu ra motor bằng 0, tiếp tục sau khoảng nghỉ,
+khi đi hướng trên trái/dưới phải hoặc FL/RR khi đi hướng trên phải/dưới trái,
+đảo chiều, mặc định PWM, nghỉ với đầu ra motor bằng 0, tiếp tục sau khoảng nghỉ,
 ngắt trong lúc nghỉ, lưu lệnh trước khi `chay`, thứ tự kịch bản, không chạy lại
 kịch bản cũ, hủy kịch bản, đầu vào không hợp lệ, lỗi ghi giữa chừng và dừng khi bị ngắt.
 Kết quả này không thay thế kiểm tra trên xe thực tế.
@@ -362,7 +366,10 @@ try:
     controller.move(direction="backward", seconds=1, speed=0.3)
     controller.strafe(direction="left", seconds=0.5, speed=0.3)
     controller.strafe(direction="right", seconds=0.5)  # PWM mặc định 50%
-    controller.move_forward_left(seconds=0.5, speed=0.3)  # Chéo trên trái 3π/4
+    controller.move_forward_left(seconds=0.5, speed=0.3)  # Trên trái 3π/4
+    controller.move_forward_right(seconds=0.5, speed=0.3)  # Trên phải π/4
+    controller.move_backward_left(seconds=0.5, speed=0.3)  # Dưới trái −3π/4
+    controller.move_backward_right(seconds=0.5, speed=0.3)  # Dưới phải −π/4
     controller.turn_left(angle=15)   # Góc ước lượng, PWM cố định TURN_SPEED
     controller.turn_right(angle=15)
 finally:

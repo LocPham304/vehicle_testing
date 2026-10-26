@@ -185,13 +185,31 @@ class MotorController:
 
     def move_forward_left(self, seconds: float, speed: float = DEFAULT_SPEED) -> None:
         """Translate at 3*pi/4: FR/RL forward, FL/RR unpowered."""
+        self._move_diagonal(("FR", "RL"), True, seconds, speed, "TREN TRAI")
+
+    def move_forward_right(self, seconds: float, speed: float = DEFAULT_SPEED) -> None:
+        """Translate at pi/4: FL/RR forward, FR/RL unpowered."""
+        self._move_diagonal(("FL", "RR"), True, seconds, speed, "TREN PHAI")
+
+    def move_backward_left(self, seconds: float, speed: float = DEFAULT_SPEED) -> None:
+        """Translate at -3*pi/4: FL/RR backward, FR/RL unpowered."""
+        self._move_diagonal(("FL", "RR"), False, seconds, speed, "DUOI TRAI")
+
+    def move_backward_right(self, seconds: float, speed: float = DEFAULT_SPEED) -> None:
+        """Translate at -pi/4: FR/RL backward, FL/RR unpowered."""
+        self._move_diagonal(("FR", "RL"), False, seconds, speed, "DUOI PHAI")
+
+    def _move_diagonal(
+        self, active_wheels: tuple[str, str], forward: bool,
+        seconds: float, speed: float, label: str,
+    ) -> None:
         validate_duration(seconds)
         validate_speed(speed)
         if set(self._motors) != {"FR", "FL", "RL", "RR"}:
             raise ValueError("Chay cheo Mecanum can du bon banh FR, FL, RL, RR.")
-        # sin(3*pi/4 - pi/4)=1 for FR/RL; sin(3*pi/4 + pi/4)=0 for FL/RR.
-        directions = {"FR": True, "FL": None, "RL": True, "RR": None}
-        self._drive_for(directions, seconds, speed, "CHEO TREN TRAI")
+        # At diagonal angles one pair has sin(angle +/- pi/4)=+/-1, the other 0.
+        directions = {name: forward if name in active_wheels else None for name in self._motors}
+        self._drive_for(directions, seconds, speed, label)
 
     def turn_left(self, angle: float) -> None:
         """Estimate a counterclockwise chassis turn, viewed from above."""
