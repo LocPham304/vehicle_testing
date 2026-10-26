@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng GPIO BCM 18, càng dùng GPIO BCM 12, giới hạn góc lệnh 0–80°.
+Tay nâng/hạ dùng GPIO BCM 18 (0–80°), càng dùng GPIO BCM 12 (mở 0°, đóng 90°).
 
 ## Cấu trúc
 
@@ -13,7 +13,7 @@ Tay nâng/hạ dùng GPIO BCM 18, càng dùng GPIO BCM 12, giới hạn góc l�
 | --- | --- |
 | `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
-| `hand.py` | Điều khiển nâng/hạ BCM 18 và càng BCM 12, giới hạn góc 0–80° |
+| `hand.py` | Nâng/hạ BCM 18 trong 0–80°; mở/đóng càng BCM 12 ở 0°/90° |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -183,51 +183,34 @@ Servo càng 12G dùng **GPIO BCM 12**, đã được người dùng xác nhận 
 Người dùng cũng xác nhận **giảm góc thì mở càng**, tăng góc thì khép càng.
 
 ```text
-cang_goc 40
-mo_cang 10 2
-dong_cang 10 2
+mo_cang 2
+dong_cang 2
 chay
 ```
 
-Góc yêu cầu là **40° → 30° → 40°**. `cang_goc` đặt góc tuyệt đối;
-`mo_cang <độ> [giây]`/`dong_cang <độ> [giây]` nhận số độ tương đối dương,
-thời gian chuyển góc mặc định **2 giây** (`CLAW_MOVE_SECONDS` trong `config.py`).
-Ví dụ `mo_cang 10` và `mo_cang 10 2` đều giảm góc yêu cầu 10° trong 2 giây;
-`mo_cang 10 3` chuyển cùng khoảng góc trong 3 giây. Không nhận PWM.
-Phải chạy `cang_goc` trước các lệnh tương đối trong mỗi phiên. Mốc góc càng
-độc lập với `tay_goc` của nâng/hạ; có thể xen kẽ hai nhóm lệnh trong cùng kịch bản.
-Giới hạn lệnh ban đầu giữ **0–80°** theo `servo2.limit()` trong firmware cũ,
-chưa phải giới hạn cơ khí đã hiệu chỉnh trên càng. Các thử nghiệm người dùng
-đã xác nhận ở khoảng 30–40°; tiếp tục thử trong khoảng này trước.
+Chỉ dùng `mo_cang [giây]` và `dong_cang [giây]`, không cần lệnh đặt mốc góc.
+Mở yêu cầu **0°**, đóng yêu cầu **90°**, theo khoảng 0–90° người dùng yêu cầu.
+Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGLE`,
+`CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ vẫn giới hạn 0–80°.
+Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
 
-Các lệnh mở/khép chia khoảng góc thành các bước tối đa **1°** (`CLAW_STEP_DEGREES`),
-phân bố thời gian theo độ lớn mỗi bước để gửi góc đích vào cuối khoảng thời gian
-đã chọn. Sau đó chờ thêm `CLAW_MOVE_WAIT_SECONDS = 0.5` giây rồi ngắt PWM,
-nên lệnh mặc định mất khoảng **2,5 giây** tổng cộng. Nếu đã chạm giới hạn góc,
-lệnh tương đối không đổi góc sẽ được bỏ qua.
-`cang_goc` giữa hai mốc đã có vẫn dùng bước 1° mỗi `CLAW_STEP_INTERVAL_SECONDS = 0.02` giây.
-Lệnh mốc đầu tiên gửi thẳng góc yêu cầu vì chưa biết vị trí xuất phát.
-Chia bước không xác nhận đã hết giật thực tế; nếu vẫn giật/rung thì cần
-kiểm tra thêm nguồn và tín hiệu PWM. `probe_servo.py` vẫn gửi góc trực tiếp
-để chẩn đoán, không dùng chuyển góc từng bước này.
+Mặc định phát PWM ở góc đích trong **2 giây** (`CLAW_MOVE_SECONDS`) rồi ngắt PWM.
+`mo_cang` tương đương `mo_cang 2`; `dong_cang 0.5` phát yêu cầu đóng trong 0,5 giây.
+Tham số phải là số dương hữu hạn, không nhận thêm góc hoặc PWM.
+Lệnh gửi trực tiếp góc đích, không nội suy từ vị trí giả định và không cộng thêm
+0,5 giây chờ. **Thời gian phát PWM không điều chỉnh tốc độ di chuyển thực tế**:
+càng có thể tới đích trước khi hết thời gian. Chưa xác nhận càng mở chậm hoặc
+mở đúng góc trên phần cứng. `probe_servo.py` vẫn là công cụ thử riêng.
 
-Thời gian trên là thời gian phát các góc yêu cầu trong phần mềm, chưa xác nhận
-càng thực tế mở chậm hoặc mở đúng góc. Hiện tượng mọi góc đều mở hết càng vẫn
-cần xác định nguyên nhân; đặt 2 giây không tự khắc phục hiện tượng đó.
+Mặc định **`CLAW_HOLD_POSITION = False`**: hết thời gian thì gửi duty 0 để ngắt
+PWM riêng BCM 12. Càng không giữ lực kẹp liên tục và vật đang kẹp có thể tuột.
+Nâng/hạ BCM 18 vẫn giữ PWM. `CLAW_HOLD_POSITION = True` giữ PWM sau thao tác;
+chỉ dùng sau khi kiểm tra nguyên nhân giật thực tế. Người dùng từng xác nhận
+càng hết giật ngay khi Ctrl+C tắt PWM; chưa xác định nguyên nhân phần cứng.
 
-Mặc định **`CLAW_HOLD_POSITION = False`**: sau khi chờ 0,5 giây, chương trình
-gửi duty 0 để ngắt PWM riêng càng BCM 12. Thay đổi này dựa trên quan sát
-càng giật khi giữ vị trí và hết giật ngay khi Ctrl+C tắt PWM. Nó không xác
-định được chính xác lỗi nguồn, độ ổn định xung hay cơ cấu bị cản.
-Nâng/hạ BCM 18 vẫn giữ PWM; càng không còn được yêu cầu giữ lực kẹp liên tục
-và vật đang kẹp có thể tuột. Nếu cần giữ lực, đặt `CLAW_HOLD_POSITION = True`
-và khởi động lại chương trình, sau khi kiểm tra nguyên nhân giật thực tế.
-Ngắt PWM không làm cú bật của lệnh mốc đầu tiên trở thành chuyển động chậm.
-
-Mốc càng vẫn là góc đã yêu cầu cuối cùng để tính `mo_cang`/`dong_cang`,
-không phải vị trí đo được sau khi nhả lực. Nếu càng bị đẩy lệch, đặt lại
-`cang_goc` phù hợp trước khi tiếp tục. Lặp lại cùng một lệnh `cang_goc` sẽ
-phát lại góc và ngắt PWM; nó không bị bỏ qua chỉ vì trùng góc đã yêu cầu.
+Có thể mở hoặc đóng ngay ở lệnh đầu tiên và lặp lại cùng thao tác sau khi nhả PWM.
+Các lệnh vẫn xếp hàng tới khi nhập `chay`, dừng bánh trước khi điều khiển càng,
+hủy phần còn lại khi lỗi/ngắt, và giải phóng riêng từng GPIO khi thoát.
 
 ### Chẩn đoán cổng servo chưa xác định GPIO
 
@@ -258,9 +241,9 @@ Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và 
 ### Càng luôn mở hết dù đổi góc: xác định loại servo trước
 
 Nhãn "12G Digital Servo" chưa xác nhận servo định vị hay quay liên tục.
-Hiện các lệnh càng đang giả định servo định vị 180° và dùng giới hạn 0–80°
-từ firmware cũ; đó chưa phải dải cơ khí đã hiệu chỉnh của càng thực tế.
-Theo công thức hiện tại, 0–80° tương ứng khoảng 500–1389 µs. Nếu servo quay
+Các lệnh càng dùng thang điện 180° với hai góc đích 0°/90° theo cấu hình;
+đó chưa phải dải cơ khí đã hiệu chỉnh của càng thực tế.
+Theo công thức hiện tại, 0°/90° tương ứng 500/1500 µs. Nếu servo quay
 liên tục, dải này có thể chỉ yêu cầu quay cùng một chiều; nếu là servo định vị,
 cơ cấu cũng có thể chạm hết hành trình trong dải này. Chưa xác định nguyên nhân
 chỉ từ việc cả các góc đều làm càng mở hết. Ngắt PWM chỉ dừng yêu cầu giữ xung,
@@ -284,7 +267,7 @@ Phép thử giới hạn 1000–2000 µs, mỗi lần tối đa 3 giây, rồi t
 GPIO được chọn; không tự đo hoặc kết luận loại servo. Điểm dừng thực tế có
 thể khác 1500 µs. Có thể thêm `--dry-run` để xem yêu cầu mà không mở GPIO.
 Nếu xác nhận servo quay liên tục, cần đổi lệnh càng sang tốc độ/thời gian hoặc
-thêm phản hồi vị trí; chưa được coi các số trong `cang_goc` là góc thực.
+thêm phản hồi vị trí; chưa được coi góc cấu hình là góc thực.
 Tham khảo sự khác nhau giữa xung vị trí và xung tốc độ tại
 [Adafruit: servo pulse](https://makecode.adafruit.com/reference/pins/servo-set-pulse).
 

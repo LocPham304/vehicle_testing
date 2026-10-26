@@ -27,16 +27,16 @@ SERVO_MIN_ANGLE = 0.0
 SERVO_MAX_ANGLE = 80.0
 # Wait between commands; this is not a measurement of the arm's travel time.
 SERVO_MOVE_WAIT_SECONDS = 1.0
-# Relative claw moves spread their requested angle changes over 2 seconds.
+# Claw endpoints requested by the user: decreasing angle opens the gripper.
+CLAW_MIN_ANGLE = 0.0
+CLAW_MAX_ANGLE = 90.0
+CLAW_OPEN_ANGLE = 0.0
+CLAW_CLOSE_ANGLE = 90.0
+# Time to send each endpoint request; this does not control physical speed.
 CLAW_MOVE_SECONDS = 2.0
-# Absolute claw moves between known positions retain the 1 degree / 20 ms ramp.
-# The first absolute reference command cannot ramp from an unknown position.
-CLAW_STEP_DEGREES = 1.0
-CLAW_STEP_INTERVAL_SECONDS = 0.02
 # Match the old door controller's pulse-then-release behavior for the claw.
 # False stops PWM after each move, so active gripping force is not maintained.
 CLAW_HOLD_POSITION = False
-CLAW_MOVE_WAIT_SECONDS = 0.5
 
 
 @dataclass(frozen=True)

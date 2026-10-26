@@ -1,6 +1,6 @@
-"""Independent arm (BCM 18) and claw (BCM 12) positional servo control.
+"""Arm position control (BCM 18) and direct gripper open/close (BCM 12).
 
-Angles track requested positions only. GPIO opens on the first absolute command.
+Requested angles are not measured positions. GPIO opens only on execution.
 """
 
 import importlib
@@ -12,8 +12,8 @@ from typing import Callable, Protocol
 from vehicle_testing.config import (
     SERVO_BCM_PIN, SERVO_PWM_FREQUENCY_HZ, SERVO_MIN_ANGLE,
     SERVO_MAX_ANGLE, SERVO_MOVE_WAIT_SECONDS,
-    CLAW_BCM_PIN, CLAW_STEP_DEGREES, CLAW_STEP_INTERVAL_SECONDS,
-    CLAW_HOLD_POSITION, CLAW_MOVE_WAIT_SECONDS, CLAW_MOVE_SECONDS,
+    CLAW_BCM_PIN, CLAW_MIN_ANGLE, CLAW_MAX_ANGLE, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
+    CLAW_HOLD_POSITION, CLAW_MOVE_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,11 @@ def validate_hand_step(angle: float) -> None:
 def validate_claw_seconds(seconds: float) -> None:
     if not math.isfinite(seconds) or seconds <= 0:
         raise ValueError("Thoi gian chuyen cang phai la so duong huu han.")
+
+
+def validate_claw_angle(angle: float) -> None:
+    if not math.isfinite(angle) or not CLAW_MIN_ANGLE <= angle <= CLAW_MAX_ANGLE:
+        raise ValueError(f"Goc cau hinh cang phai trong [{CLAW_MIN_ANGLE:g}, {CLAW_MAX_ANGLE:g}] do.")
 
 
 class ServoOutput(Protocol):
@@ -80,10 +85,13 @@ class GPIOServoOutput:
             raise
 
     def set_angle(self, angle: float) -> None:
-        validate_hand_angle(angle)
+        if self._pin == CLAW_BCM_PIN:
+            validate_claw_angle(angle)
+        else:
+            validate_hand_angle(angle)
         if self._closed:
             raise RuntimeError("Servo da dong.")
-        # Keep the original 0..180 electrical scale, even with a 0..80 arm limit.
+        # Keep the original 0..180 electrical scale with per-device angle limits.
         self._pwm.ChangeDutyCycle(2.5 + angle / 180.0 * 10.0)
 
     def release(self) -> None:
@@ -108,13 +116,9 @@ class ServoController:
     def __init__(self, output_factory: Callable[[], ServoOutput],
                  sleeper: Callable[[float], None] = time.sleep, *,
                  pin: int = SERVO_BCM_PIN, label: str = "SERVO",
-                 reference_command: str = "tay_goc", smooth: bool = False,
+                 reference_command: str = "tay_goc",
                  hold_position: bool = True,
                  settle_seconds: float = SERVO_MOVE_WAIT_SECONDS) -> None:
-        if smooth and (not math.isfinite(CLAW_STEP_DEGREES) or CLAW_STEP_DEGREES <= 0
-                       or not math.isfinite(CLAW_STEP_INTERVAL_SECONDS)
-                       or CLAW_STEP_INTERVAL_SECONDS <= 0):
-            raise ValueError("Buoc goc va thoi gian chuyen cang phai duong huu han.")
         if not math.isfinite(settle_seconds) or settle_seconds <= 0:
             raise ValueError("Thoi gian cho servo phai duong huu han.")
         self._output_factory = output_factory
@@ -125,16 +129,11 @@ class ServoController:
         self._pin = pin
         self._label = label
         self._reference_command = reference_command
-        self._smooth = smooth
         self._hold_position = hold_position
         self._settle_seconds = settle_seconds
 
-    def set_angle(self, angle: float, *, move_seconds: float | None = None) -> None:
+    def set_angle(self, angle: float) -> None:
         validate_hand_angle(angle)
-        if move_seconds is not None:
-            validate_claw_seconds(move_seconds)
-            if self._angle is None:
-                raise ValueError(f"Chay {self._reference_command} <0..80> truoc de dat goc tham chieu.")
         if self._closed:
             raise RuntimeError("Bo dieu khien tay da dong.")
         if angle == self._angle and self._hold_position:
@@ -143,26 +142,7 @@ class ServoController:
         try:
             if self._output is None:
                 self._output = self._output_factory()
-            if self._smooth and self._angle is not None and angle != self._angle:
-                position = self._angle
-                distance = abs(angle - position)
-                if move_seconds is not None:
-                    logger.info("%s chuyen goc trong %g giay (thoi gian phan mem).",
-                                self._label, move_seconds)
-                while position != angle:
-                    delta = angle - position
-                    next_position = (angle if abs(delta) <= CLAW_STEP_DEGREES else
-                                     position + math.copysign(CLAW_STEP_DEGREES, delta))
-                    if move_seconds is not None:
-                        # Request the final angle at the end of the transition.
-                        # A fractional final step receives its proportional time.
-                        self._sleep(move_seconds * abs(next_position - position) / distance)
-                    position = next_position
-                    self._output.set_angle(position)
-                    if move_seconds is None:
-                        self._sleep(CLAW_STEP_INTERVAL_SECONDS)
-            else:
-                self._output.set_angle(angle)
+            self._output.set_angle(angle)
             self._sleep(self._settle_seconds)
             if not self._hold_position:
                 self._output.release()
@@ -177,10 +157,8 @@ class ServoController:
             raise
         self._angle = angle
 
-    def _step(self, angle: float, sign: int, *, seconds: float | None = None) -> None:
+    def _step(self, angle: float, sign: int) -> None:
         validate_hand_step(angle)
-        if seconds is not None:
-            validate_claw_seconds(seconds)
         if self._closed:
             raise RuntimeError("Bo dieu khien tay da dong.")
         if self._angle is None:
@@ -191,7 +169,7 @@ class ServoController:
             logger.info("Gioi han goc tay: %g -> %g do", target, limited)
         if limited == self._angle:
             return
-        self.set_angle(limited, move_seconds=seconds)
+        self.set_angle(limited)
 
     def close(self) -> None:
         if self._closed:
@@ -212,16 +190,49 @@ class HandController(ServoController):
         self._step(angle, 1)
 
 
-class ClawController(ServoController):
+class ClawController:
+    """Send fixed endpoints for a chosen duration, without a position reference."""
+
     def __init__(self, output_factory: Callable[[], ServoOutput],
                  sleeper: Callable[[float], None] = time.sleep) -> None:
-        super().__init__(output_factory, sleeper, pin=CLAW_BCM_PIN, label="SERVO CANG",
-                         reference_command="cang_goc", smooth=True,
-                         hold_position=CLAW_HOLD_POSITION, settle_seconds=CLAW_MOVE_WAIT_SECONDS)
+        self._output_factory = output_factory
+        self._output: ServoOutput | None = None
+        self._sleep = sleeper
+        self._hold_position = CLAW_HOLD_POSITION
+        self._closed = False
 
-    def open(self, angle: float, *, seconds: float = CLAW_MOVE_SECONDS) -> None:
-        """User confirmed: decreasing angle opens the claw."""
-        self._step(angle, -1, seconds=seconds)
+    def _move(self, angle: float, seconds: float, label: str) -> None:
+        validate_claw_seconds(seconds)
+        validate_claw_angle(angle)
+        if self._closed:
+            raise RuntimeError("Bo dieu khien cang da dong.")
+        logger.info("%s: yeu cau %g do, phat PWM %g giay (GPIO BCM %d).",
+                    label, angle, seconds, CLAW_BCM_PIN)
+        try:
+            if self._output is None:
+                self._output = self._output_factory()
+            self._output.set_angle(angle)
+            self._sleep(seconds)
+        except (Exception, KeyboardInterrupt):
+            if self._output is not None:
+                try:
+                    self._output.release()
+                except Exception:
+                    logger.exception("Khong tat duoc PWM cang sau loi")
+            raise
+        if not self._hold_position:
+            self._output.release()
+            logger.info("Da gui yeu cau tat PWM cang; khong giu luc kep lien tuc.")
 
-    def grip(self, angle: float, *, seconds: float = CLAW_MOVE_SECONDS) -> None:
-        self._step(angle, 1, seconds=seconds)
+    def open(self, seconds: float = CLAW_MOVE_SECONDS) -> None:
+        self._move(CLAW_OPEN_ANGLE, seconds, "MO CANG")
+
+    def grip(self, seconds: float = CLAW_MOVE_SECONDS) -> None:
+        self._move(CLAW_CLOSE_ANGLE, seconds, "DONG CANG")
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._output is not None:
+            self._output.close()
