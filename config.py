@@ -31,6 +31,10 @@ SERVO_MOVE_WAIT_SECONDS = 1.0
 # The first absolute reference command cannot ramp from an unknown position.
 CLAW_STEP_DEGREES = 1.0
 CLAW_STEP_INTERVAL_SECONDS = 0.02
+# Match the old door controller's pulse-then-release behavior for the claw.
+# False stops PWM after each move, so active gripping force is not maintained.
+CLAW_HOLD_POSITION = False
+CLAW_MOVE_WAIT_SECONDS = 0.5
 
 
 @dataclass(frozen=True)

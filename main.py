@@ -10,7 +10,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from vehicle_testing.config import DEFAULT_SPEED, TURN_SPEED, SERVO_BCM_PIN, CLAW_BCM_PIN
+from vehicle_testing.config import DEFAULT_SPEED, TURN_SPEED, SERVO_BCM_PIN, CLAW_BCM_PIN, CLAW_HOLD_POSITION
 from vehicle_testing.hand import (
     DryRunServoOutput, GPIOServoOutput, HandController, ClawController,
     validate_hand_angle, validate_hand_step,
@@ -66,7 +66,8 @@ Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
 Chay tay_goc truoc nang/ha. Nang/ha dung GPIO BCM {SERVO_BCM_PIN}, gioi han 0..80 do.
 Chay cang_goc truoc mo_cang/dong_cang. Cang dung GPIO BCM {CLAW_BCM_PIN}, gioi han 0..80 do.
-Tay giu PWM sau moi lenh; thoat/Ctrl+C se tat PWM servo.
+Tay nang/ha giu PWM; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
+Thoat/Ctrl+C se tat PWM cac servo.
 Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
 Chay xong thi xoa danh sach. Co the nhap kich ban moi.
 Khi dang chay, nhan Ctrl+C de dung va thoat.

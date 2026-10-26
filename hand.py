@@ -13,6 +13,7 @@ from vehicle_testing.config import (
     SERVO_BCM_PIN, SERVO_PWM_FREQUENCY_HZ, SERVO_MIN_ANGLE,
     SERVO_MAX_ANGLE, SERVO_MOVE_WAIT_SECONDS,
     CLAW_BCM_PIN, CLAW_STEP_DEGREES, CLAW_STEP_INTERVAL_SECONDS,
+    CLAW_HOLD_POSITION, CLAW_MOVE_WAIT_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,11 +103,15 @@ class ServoController:
     def __init__(self, output_factory: Callable[[], ServoOutput],
                  sleeper: Callable[[float], None] = time.sleep, *,
                  pin: int = SERVO_BCM_PIN, label: str = "SERVO",
-                 reference_command: str = "tay_goc", smooth: bool = False) -> None:
+                 reference_command: str = "tay_goc", smooth: bool = False,
+                 hold_position: bool = True,
+                 settle_seconds: float = SERVO_MOVE_WAIT_SECONDS) -> None:
         if smooth and (not math.isfinite(CLAW_STEP_DEGREES) or CLAW_STEP_DEGREES <= 0
                        or not math.isfinite(CLAW_STEP_INTERVAL_SECONDS)
                        or CLAW_STEP_INTERVAL_SECONDS <= 0):
             raise ValueError("Buoc goc va thoi gian chuyen cang phai duong huu han.")
+        if not math.isfinite(settle_seconds) or settle_seconds <= 0:
+            raise ValueError("Thoi gian cho servo phai duong huu han.")
         self._output_factory = output_factory
         self._output: ServoOutput | None = None
         self._angle: float | None = None
@@ -116,18 +121,20 @@ class ServoController:
         self._label = label
         self._reference_command = reference_command
         self._smooth = smooth
+        self._hold_position = hold_position
+        self._settle_seconds = settle_seconds
 
     def set_angle(self, angle: float) -> None:
         validate_hand_angle(angle)
         if self._closed:
             raise RuntimeError("Bo dieu khien tay da dong.")
-        if angle == self._angle:
+        if angle == self._angle and self._hold_position:
             return
         logger.info("%s goc yeu cau %g do (GPIO BCM %d)", self._label, angle, self._pin)
         try:
             if self._output is None:
                 self._output = self._output_factory()
-            if self._smooth and self._angle is not None:
+            if self._smooth and self._angle is not None and angle != self._angle:
                 position = self._angle
                 while position != angle:
                     delta = angle - position
@@ -137,7 +144,10 @@ class ServoController:
                     self._sleep(CLAW_STEP_INTERVAL_SECONDS)
             else:
                 self._output.set_angle(angle)
-            self._sleep(SERVO_MOVE_WAIT_SECONDS)
+            self._sleep(self._settle_seconds)
+            if not self._hold_position:
+                self._output.release()
+                logger.info("%s da gui yeu cau tat PWM sau lenh; khong giu luc lien tuc.", self._label)
         except (Exception, KeyboardInterrupt):
             self._angle = None
             if self._output is not None:
@@ -158,6 +168,8 @@ class ServoController:
         limited = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, target))
         if limited != target:
             logger.info("Gioi han goc tay: %g -> %g do", target, limited)
+        if limited == self._angle:
+            return
         self.set_angle(limited)
 
     def close(self) -> None:
@@ -183,7 +195,8 @@ class ClawController(ServoController):
     def __init__(self, output_factory: Callable[[], ServoOutput],
                  sleeper: Callable[[float], None] = time.sleep) -> None:
         super().__init__(output_factory, sleeper, pin=CLAW_BCM_PIN, label="SERVO CANG",
-                         reference_command="cang_goc", smooth=True)
+                         reference_command="cang_goc", smooth=True,
+                         hold_position=CLAW_HOLD_POSITION, settle_seconds=CLAW_MOVE_WAIT_SECONDS)
 
     def open(self, angle: float) -> None:
         """User confirmed: decreasing angle opens the claw."""

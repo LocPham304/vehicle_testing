@@ -61,6 +61,7 @@ class ClawTests(unittest.TestCase):
                 raise KeyboardInterrupt
         claw = self.claw(wait)
         claw.set_angle(40)
+        self.output.released = False
         with self.assertRaises(KeyboardInterrupt):
             claw.open(10)
         self.assertEqual(self.output.angles, [40, 39])
@@ -145,6 +146,7 @@ class ClawTests(unittest.TestCase):
     def test_failed_claw_ramp_aborts_later_wheel_move(self):
         claw = self.claw()
         claw.set_angle(40)
+        self.output.released = False
         self.output.set_angle = Mock(side_effect=OSError("write failed"))
         motor_output = Mock()
         lines = ["mo_cang 10", "tien 1", "chay"]
@@ -153,6 +155,47 @@ class ClawTests(unittest.TestCase):
                 run_session(MotorController(motor_output, sleeper=lambda _: None), None, claw)
         self.assertTrue(self.output.released)
         self.assertFalse(any(call.args[1] > 0 for call in motor_output.set_duty.call_args_list))
+
+    def test_claw_releases_pwm_after_settling_but_lift_keeps_holding(self):
+        events = []
+        output = Mock()
+        output.set_angle.side_effect = lambda angle: events.append(("angle", angle))
+        output.release.side_effect = lambda: events.append(("release",))
+        claw = self.module.ClawController(lambda: output,
+                                          sleeper=lambda seconds: events.append(("wait", seconds)))
+        claw.set_angle(40)
+        self.assertEqual(events, [("angle", 40), ("wait", 0.5), ("release",)])
+        lift_output = Mock()
+        lift = self.module.HandController(lambda: lift_output, sleeper=lambda _: None)
+        lift.set_angle(40)
+        lift_output.release.assert_not_called()
+
+    def test_same_absolute_claw_angle_is_reissued_after_pwm_release(self):
+        output = Mock()
+        claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
+        claw.set_angle(40)
+        claw.set_angle(40)
+        self.assertEqual([call.args for call in output.set_angle.call_args_list], [(40,), (40,)])
+        self.assertEqual(output.release.call_count, 2)
+
+    def test_hold_option_keeps_pwm_and_does_not_reissue_unchanged_angle(self):
+        output = Mock()
+        with patch.object(self.module, "CLAW_HOLD_POSITION", True):
+            claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
+        claw.set_angle(40)
+        claw.set_angle(40)
+        output.release.assert_not_called()
+        output.set_angle.assert_called_once_with(40)
+
+    def test_release_error_invalidates_reference_and_aborts_move(self):
+        output = Mock()
+        output.release.side_effect = OSError("release failed")
+        claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
+        with self.assertLogs(self.module.logger, level="ERROR"):
+            with self.assertRaisesRegex(OSError, "release failed"):
+                claw.set_angle(40)
+        with self.assertRaisesRegex(ValueError, "cang_goc"):
+            claw.open(10)
 
 
 if __name__ == "__main__":

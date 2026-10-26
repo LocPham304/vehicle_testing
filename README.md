@@ -162,8 +162,9 @@ và chương trình gửi lệnh dừng bánh trước khi điều khiển tay. 
 chờ `SERVO_MOVE_WAIT_SECONDS = 1.0` trong `config.py`; đây là thời gian chờ
 ban đầu, chưa đo thời gian cơ cấu thực sự tới đích.
 
-PWM servo được giữ sau mỗi lệnh, kể cả khi chạy bánh, `ngung` hoặc `dung`,
-để tiếp tục yêu cầu giữ vị trí. `dung` vẫn hủy kịch bản đang soạn.
+PWM servo nâng/hạ được giữ sau mỗi lệnh, kể cả khi chạy bánh, `ngung` hoặc `dung`,
+để tiếp tục yêu cầu giữ vị trí. Servo càng mặc định ngắt PWM sau lệnh như mô tả dưới đây.
+`dung` vẫn hủy kịch bản đang soạn.
 Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng từng GPIO servo đã mở;
 sau đó servo không còn được yêu cầu giữ lực và tay có thể hạ theo tải.
 
@@ -198,11 +199,25 @@ chưa phải giới hạn cơ khí đã hiệu chỉnh trên càng. Các thử n
 
 Để giảm cú giật do đổi ngay góc đích, càng chuyển từng bước **1° mỗi 20 ms**
 giữa các góc đã biết. Cấu hình nằm ở `CLAW_STEP_DEGREES` và
-`CLAW_STEP_INTERVAL_SECONDS`; sau đó chờ thêm `SERVO_MOVE_WAIT_SECONDS`.
+`CLAW_STEP_INTERVAL_SECONDS`; sau đó chờ thêm `CLAW_MOVE_WAIT_SECONDS = 0.5` giây.
 Lệnh mốc đầu tiên gửi thẳng góc yêu cầu vì chưa biết vị trí xuất phát.
 Chia bước không xác nhận đã hết giật thực tế; nếu vẫn giật/rung thì cần
 kiểm tra thêm nguồn và tín hiệu PWM. `probe_servo.py` vẫn gửi góc trực tiếp
 để chẩn đoán, không dùng chuyển góc từng bước này.
+
+Mặc định **`CLAW_HOLD_POSITION = False`**: sau khi chờ 0,5 giây, chương trình
+gửi duty 0 để ngắt PWM riêng càng BCM 12. Thay đổi này dựa trên quan sát
+càng giật khi giữ vị trí và hết giật ngay khi Ctrl+C tắt PWM. Nó không xác
+định được chính xác lỗi nguồn, độ ổn định xung hay cơ cấu bị cản.
+Nâng/hạ BCM 18 vẫn giữ PWM; càng không còn được yêu cầu giữ lực kẹp liên tục
+và vật đang kẹp có thể tuột. Nếu cần giữ lực, đặt `CLAW_HOLD_POSITION = True`
+và khởi động lại chương trình, sau khi kiểm tra nguyên nhân giật thực tế.
+Ngắt PWM không làm cú bật của lệnh mốc đầu tiên trở thành chuyển động chậm.
+
+Mốc càng vẫn là góc đã yêu cầu cuối cùng để tính `mo_cang`/`dong_cang`,
+không phải vị trí đo được sau khi nhả lực. Nếu càng bị đẩy lệch, đặt lại
+`cang_goc` phù hợp trước khi tiếp tục. Lặp lại cùng một lệnh `cang_goc` sẽ
+phát lại góc và ngắt PWM; nó không bị bỏ qua chỉ vì trùng góc đã yêu cầu.
 
 ### Chẩn đoán cổng servo chưa xác định GPIO
 
