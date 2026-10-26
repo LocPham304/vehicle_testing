@@ -1,22 +1,25 @@
-# Điều khiển robot tiến/lùi, chạy ngang và quay Mecanum
+# Điều khiển robot Mecanum và tay nâng/hạ
 
 Chương trình Python dựa trên `pi4-source/test-banh-xe.py`, dùng thư viện
 Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy cả bốn bánh
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
+Tay nâng/hạ dùng servo riêng trên GPIO BCM 19, giới hạn góc 0–80°.
 
 ## Cấu trúc
 
 | File | Trách nhiệm |
 | --- | --- |
-| `config.py` | Địa chỉ I²C, tần số PWM, PWM mặc định, kênh và chiều của từng động cơ |
+| `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
+| `hand.py` | Điều khiển servo nâng/hạ qua GPIO BCM 19, giới hạn góc 0–80° |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
 | `tests/test_strafing.py` | Kiểm tra chiều chạy ngang, PWM, xếp lệnh và dừng khi lỗi hoặc bị ngắt |
 | `tests/test_diagonal.py` | Kiểm tra bốn hướng chéo: cặp bánh, chiều quay, bánh tắt, xếp lệnh và dừng |
+| `tests/test_hand.py` | Kiểm tra góc tương đối, giới hạn, GPIO, kịch bản nâng/hạ và giải phóng khi lỗi |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
@@ -120,6 +123,56 @@ không thêm vào danh sách; các dòng hợp lệ trước đó vẫn được
 Lỗi khi thực hiện một lệnh sẽ hủy các lệnh còn lại và thoát phiên.
 Ctrl+C trả mã thoát 130; lỗi phần
 cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
+
+## Tay nâng/hạ qua GPIO BCM 19
+
+Servo nối vào **GPIO BCM 19** trên Raspberry Pi, dùng `RPi.GPIO` ở **50 Hz**.
+Tần số này độc lập với PWM 1000 Hz của PCA9685 điều khiển bánh xe.
+Không chạy đồng thời với `test_servo.py` hoặc chương trình khác đang dùng GPIO 19.
+Thư viện GPIO có trong `requirements.txt` cho Linux; `--dry-run` không nhập hay mở GPIO.
+
+```text
+tay_goc 40
+nang 10
+ha 20
+chay
+```
+
+Kịch bản yêu cầu góc **40° → 30° → 50°**. `tay_goc` đặt góc tuyệt đối;
+`nang` giảm góc tương đối như `run_steps(-angle)`, còn `ha` tăng góc như
+`run_steps(angle)` trong `stem_firmware/driver/robot.py`. Các lệnh nhận **độ**,
+không nhận số giây hoặc PWM. Bản GPIO gửi trực tiếp góc đích, chưa có điều chỉnh
+tốc độ chuyển góc như thư viện servo của firmware.
+
+Mỗi phiên khởi động chưa biết góc tay; chương trình không tự đưa tay về 0°.
+Phải chạy `tay_goc <0..80>` trước `nang`/`ha`. Đây là lệnh di chuyển thực sự,
+hãy chọn góc khởi đầu phù hợp với vị trí cơ cấu. Góc được ghi nhớ chỉ là góc đã
+yêu cầu, không phải góc đo từ cảm biến. Mốc được giữ giữa các kịch bản trong cùng phiên.
+Thiếu mốc khi thực hiện `nang`/`ha` thì phiên báo lỗi, bỏ các lệnh còn lại và thoát.
+
+Giới hạn giữ ở **0–80°**: ví dụ đang 30°, `nang 50` chỉ về 0°; đang 70°,
+`ha 20` chỉ tới 80°. Góc tuyệt đối ngoài giới hạn bị từ chối; số độ tương đối
+phải dương hữu hạn. Bộ đổi PWM giữ thang điện 0–180° của `test_servo.py`:
+`duty = 2.5 + angle / 180 * 10` (%), không đổi thang 0–80° thành 0–180°.
+
+Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe,
+và chương trình gửi lệnh dừng bánh trước khi điều khiển tay. Mỗi lần đổi góc
+chờ `SERVO_MOVE_WAIT_SECONDS = 1.0` trong `config.py`; đây là thời gian chờ
+ban đầu, chưa đo thời gian cơ cấu thực sự tới đích.
+
+PWM servo được giữ sau mỗi lệnh, kể cả khi chạy bánh, `ngung` hoặc `dung`,
+để tiếp tục yêu cầu giữ vị trí. `dung` vẫn hủy kịch bản đang soạn.
+Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng GPIO 19;
+sau đó servo không còn được yêu cầu giữ lực và tay có thể hạ theo tải.
+
+Thử luồng trên máy tính trước:
+
+```sh
+python vehicle_testing/main.py --dry-run
+```
+
+Sau khi kiểm tra lệnh, dùng cách chạy trên Raspberry Pi ở phần trên để chạy thật.
+Giới hạn góc và chiều nâng/hạ vẫn cần xác nhận với cơ cấu thực tế.
 
 ## Chạy ngang trái/phải bằng bánh Mecanum
 
@@ -344,7 +397,7 @@ gửi lệnh dừng. Chương trình chưa đọc encoder hoặc có cơ chế d
 python -m unittest discover -s vehicle_testing/tests -v
 ```
 
-Các bài kiểm tra dùng bộ ghi đầu ra trong bộ nhớ, không kết nối I²C.
+Các bài kiểm tra dùng bộ ghi đầu ra trong bộ nhớ, không kết nối I²C hoặc GPIO thật.
 Chúng kiểm tra bốn bánh cùng được cấp PWM ở các lệnh cũ, chỉ FR/RL được cấp PWM
 khi đi hướng trên trái/dưới phải hoặc FL/RR khi đi hướng trên phải/dưới trái,
 đảo chiều, mặc định PWM, nghỉ với đầu ra motor bằng 0, tiếp tục sau khoảng nghỉ,
