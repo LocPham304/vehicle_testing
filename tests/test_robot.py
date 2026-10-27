@@ -16,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[2]
 ENTRY_POINT = ROOT / "vehicle_testing" / "main.py"
 
 
+def wheel_duties(speed):
+    config = importlib.import_module("vehicle_testing.config")
+    return tuple(int(speed * config.WHEEL_GAIN[name] * 65535) for name in config.MOTORS)
+
+
 class RecordingOutput:
     def __init__(self):
         self.values = {}
@@ -143,7 +148,7 @@ class MotorControllerTests(unittest.TestCase):
 
         self.controller(observe).move("forward", seconds=2, speed=0.5)
         self.assertEqual(snapshots, [{
-            0: 32767, 6: 32767, 15: 32767, 9: 32767,
+            **dict(zip((0, 6, 15, 9), wheel_duties(0.5))),
             2: 65535, 1: 0, 4: 65535, 5: 0,
             14: 65535, 13: 0, 10: 65535, 11: 0,
         }])
@@ -158,7 +163,7 @@ class MotorControllerTests(unittest.TestCase):
 
         self.controller(observe).move("backward", seconds=2, speed=0.25)
         self.assertEqual(snapshots, [{
-            0: 16383, 6: 16383, 15: 16383, 9: 16383,
+            **dict(zip((0, 6, 15, 9), wheel_duties(0.25))),
             2: 0, 1: 65535, 4: 0, 5: 65535,
             14: 0, 13: 65535, 10: 0, 11: 65535,
         }])
@@ -175,9 +180,9 @@ class MotorControllerTests(unittest.TestCase):
         controller.move("backward", 2)
         controller.move("forward", 2)
         self.assertEqual(snapshots, [
-            (19660, 19660, 19660, 19660),
-            (32767, 32767, 32767, 32767),
-            (32767, 32767, 32767, 32767),
+            wheel_duties(0.3),
+            wheel_duties(0.5),
+            wheel_duties(0.5),
         ])
 
     def test_direction_switch_disables_all_pwm_before_setting_new_direction(self):
@@ -353,9 +358,9 @@ class ScriptSessionTests(unittest.TestCase):
         with patch("builtins.input", side_effect=lines), redirect_stdout(io.StringIO()):
             module.run_session(controller)
         self.assertEqual(states, [
-            (2.0, 32767, 65535, 0),
+            (2.0, wheel_duties(0.5)[0], 65535, 0),
             (0.7, 0, 0, 0),
-            (1.0, 32767, 0, 65535),
+            (1.0, wheel_duties(0.5)[0], 0, 65535),
         ])
 
     def test_interrupted_pause_does_not_run_remaining_commands(self):

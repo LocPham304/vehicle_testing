@@ -11,6 +11,11 @@ PWM_FREQUENCY_HZ = 1000
 DEFAULT_SPEED = 0.5  # PWM fraction used whenever a movement omits its speed.
 DIRECTION_CHANGE_DELAY_SECONDS = 0.5
 
+# Trial wheel compensation requested by the user; 1.0 restores untrimmed PWM.
+# Applied to every wheel movement, including turns, in both motor directions.
+# Effective PWM = requested PWM * gain. Each gain must be in (0, 1].
+WHEEL_GAIN = {"FR": 0.90, "FL": 1.00, "RL": 1.00, "RR": 1.00}
+
 # Open-loop turning: these are initial estimates from the old firmware,
 # NOT measured angles on this vehicle. Calibrate each side on the actual floor.
 # Keep this PWM fixed while calibrating; changing it invalidates both factors.

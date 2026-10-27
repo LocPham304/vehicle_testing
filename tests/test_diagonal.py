@@ -32,7 +32,7 @@ class ForwardLeftTests(unittest.TestCase):
                 pwm = config.DEFAULT_SPEED if speed is None else speed
                 for name, pins in config.MOTORS.items():
                     active = name in ("FR", "RL")
-                    self.assertEqual(snapshots[0][pins.pwm], int(pwm * 65535) if active else 0)
+                    self.assertEqual(snapshots[0][pins.pwm], int(pwm * config.WHEEL_GAIN[name] * 65535) if active else 0)
                     self.assertEqual(snapshots[0][pins.in1], 65535 if active else 0)
                     self.assertEqual(snapshots[0][pins.in2], 0)
                 self.assertTrue(all(value == 0 for value in output.values.values()))
@@ -136,9 +136,10 @@ class ForwardLeftCommandTests(unittest.TestCase):
                             run_session(motor)
                     else:
                         run_session(motor)
-                half, third = int(config.DEFAULT_SPEED * 65535), int(0.3 * 65535)
-                expected = [(1, (half,) * 4), (2, (third, 0, third, 0)),
-                            (3, (half,) * 4), (4, (0,) * 4)]
+                half = test_robot.wheel_duties(config.DEFAULT_SPEED)
+                third = test_robot.wheel_duties(0.3)
+                expected = [(1, half), (2, (third[0], 0, third[2], 0)),
+                            (3, half), (4, (0,) * 4)]
                 self.assertEqual(states, expected[:2] if interrupt else expected)
                 self.assertTrue(all(value == 0 for value in output.values.values()))
 
@@ -177,7 +178,7 @@ class OtherDiagonalTests(unittest.TestCase):
                     self.assertEqual(len(snapshots), 1)
                     pwm = config.DEFAULT_SPEED if speed is None else speed
                     for name, pins in config.MOTORS.items():
-                        self.assertEqual(snapshots[0][pins.pwm], int(pwm * 65535) if name in active else 0)
+                        self.assertEqual(snapshots[0][pins.pwm], int(pwm * config.WHEEL_GAIN[name] * 65535) if name in active else 0)
                         self.assertEqual(snapshots[0][pins.in1], 65535 if active.get(name) is True else 0)
                         self.assertEqual(snapshots[0][pins.in2], 65535 if active.get(name) is False else 0)
                     self.assertTrue(all(value == 0 for value in output.values.values()))
@@ -300,7 +301,7 @@ class OtherDiagonalCommandTests(unittest.TestCase):
                 self.assertEqual([s[0] for s in states], [1, 2] if interrupt else [1, 2, 3, 4])
                 active_maps = [{"FR": True, "RL": True}] + [row[3] for row in OTHER_DIAGONALS]
                 for (_, values), active, pwm in zip(states, active_maps, (0.3, config.DEFAULT_SPEED, 0.4, config.DEFAULT_SPEED)):
-                    expected = [(int(pwm * 65535), 65535 if active[name] else 0, 0 if active[name] else 65535)
+                    expected = [(int(pwm * config.WHEEL_GAIN[name] * 65535), 65535 if active[name] else 0, 0 if active[name] else 65535)
                                 if name in active else (0, 0, 0) for name in config.MOTORS]
                     self.assertEqual(values, tuple(expected))
                 self.assertTrue(all(value == 0 for value in output.values.values()))

@@ -394,6 +394,28 @@ thêm phản hồi vị trí; chưa được coi góc cấu hình là góc thự
 Tham khảo sự khác nhau giữa xung vị trí và xung tốc độ tại
 [Adafruit: servo pulse](https://makecode.adafruit.com/reference/pins/servo-set-pulse).
 
+## Bù PWM riêng từng bánh
+
+Trong `config.py`, cấu hình hệ số thử nghiệm:
+
+```python
+WHEEL_GAIN = {"FR": 0.90, "FL": 1.00, "RL": 1.00, "RR": 1.00}
+```
+
+PWM thực cấp cho từng bánh = PWM yêu cầu × `WHEEL_GAIN[tên bánh]`.
+Ví dụ lệnh yêu cầu PWM 50% thì FR nhận 45%, các bánh hoạt động còn lại nhận 50%.
+Bánh không hoạt động vẫn nhận PWM 0; hệ số không thay đổi chiều quay.
+Log `PWM tung banh` hiển thị mức PWM sau khi bù, kể cả bánh đang dừng.
+
+Hệ số áp dụng cho tiến/lùi, ngang, bốn hướng chéo và quay trái/phải, ở cả hai
+chiều motor. Vì vậy sau khi đổi hệ số cần kiểm tra lại góc quay đã hiệu chỉnh.
+Mỗi hệ số phải là số hữu hạn trong `(0, 1]`; dùng `1.00` để bỏ bù cho bánh đó.
+Khởi động lại chương trình sau khi sửa cấu hình.
+
+FR `0.90` là mức thử do người dùng chọn, chưa xác nhận xe giữ thẳng trên sàn.
+PWM giảm 10% không có nghĩa tốc độ bánh giảm đúng 10%; chương trình chưa có
+phản hồi tốc độ bánh hoặc hướng thân xe.
+
 ## Chạy ngang trái/phải bằng bánh Mecanum
 
 Lệnh `ngang_trai <giây> [PWM]` và `ngang_phai <giây> [PWM]` yêu cầu cả thân xe
@@ -425,7 +447,8 @@ Với kiểu lắp con lăn Mecanum dạng X như tài liệu và chiều tiến
 | `ngang_trai` | Tiến | Lùi | Tiến | Lùi |
 | `ngang_phai` | Lùi | Tiến | Lùi | Tiến |
 
-Cả bốn bánh được cấp cùng mức PWM. Kiểm tra chiều từng bánh khi kê xe trước,
+Cả bốn bánh dùng cùng PWM yêu cầu, sau đó bù riêng theo `WHEEL_GAIN`.
+Kiểm tra chiều từng bánh khi kê xe trước,
 rồi đặt xuống sàn để kiểm tra thân xe có thực sự trượt ngang. Nếu xe xoay hoặc
 đi chéo, cần kiểm tra cách lắp con lăn, vị trí và chiều từng bánh, khả năng khởi
 động ở PWM đang dùng. Chương trình chưa đo quãng đường hoặc giữ hướng bằng cảm biến,
@@ -466,7 +489,8 @@ FL = RR = sin(góc + π/4) × PWM
 | `duoi_trai` | −3π/4 = −135° | 0 | Lùi | 0 | Lùi |
 | `duoi_phai` | −π/4 = −45° | Lùi | 0 | Lùi | 0 |
 
-Mỗi lệnh cấp cùng mức PWM cho hai bánh hoạt động. Hai bánh ghi `0` có cả PWM,
+Mỗi lệnh dùng cùng PWM yêu cầu cho hai bánh hoạt động, sau đó bù riêng theo
+`WHEEL_GAIN`. Hai bánh ghi `0` có cả PWM,
 IN1 và IN2 bằng 0. Trạng thái thả trôi hoặc hãm phụ thuộc driver thực tế.
 `inverted` vẫn áp dụng cho các bánh hoạt động để giữ đúng chiều vật lý.
 Góc −3π/4 tương đương 5π/4; góc −π/4 tương đương 7π/4 trong bảng nguồn.

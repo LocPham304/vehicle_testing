@@ -33,7 +33,7 @@ class TurningTests(unittest.TestCase):
                 factor = config.TURN_LEFT_SECONDS_PER_DEGREE if direction == "left" else config.TURN_RIGHT_SECONDS_PER_DEGREE
                 self.assertAlmostEqual(seconds, 90 * factor)
                 for name, pins in config.MOTORS.items():
-                    self.assertEqual(values[pins.pwm], int(config.TURN_SPEED * 65535))
+                    self.assertEqual(values[pins.pwm], int(config.TURN_SPEED * config.WHEEL_GAIN[name] * 65535))
                     self.assertEqual(values[pins.in1], 65535 if expected[name] else 0)
                     self.assertEqual(values[pins.in2], 0 if expected[name] else 65535)
                 self.assertTrue(all(v == 0 for v in self.output.values.values()))

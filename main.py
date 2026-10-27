@@ -66,6 +66,7 @@ HELP = f"""Lenh:
   dung               Gui lenh dung va huy kich ban dang soan
   thoat              Huy kich ban dang soan, dung va thoat
 Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
+PWM tung banh = PWM yeu cau x WHEEL_GAIN trong config.py; ap dung ca lenh quay.
 Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
 Nang/ha dung GPIO BCM {SERVO_BCM_PIN}; can dat tay o vi tri ha {SERVO_START_ANGLE:g} do truoc khi khoi dong.

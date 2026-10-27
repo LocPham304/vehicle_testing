@@ -15,6 +15,7 @@ from .config import (
     TURN_LEFT_SECONDS_PER_DEGREE,
     TURN_RIGHT_SECONDS_PER_DEGREE,
     TURN_SPEED,
+    WHEEL_GAIN,
     MotorPins,
 )
 
@@ -129,6 +130,12 @@ class MotorController:
             raise ValueError("Cau hinh motor phai co cac kenh nguyen tu 0 den 15.")
         if len(channels) != len(set(channels)):
             raise ValueError("Cac motor khong duoc dung trung kenh PWM/IN1/IN2.")
+        if not isinstance(WHEEL_GAIN, Mapping) or set(WHEEL_GAIN) != {"FR", "FL", "RL", "RR"}:
+            raise ValueError("WHEEL_GAIN phai co dung bon banh FR, FL, RL, RR.")
+        self._wheel_gain = dict(WHEEL_GAIN)
+        for name, gain in self._wheel_gain.items():
+            if type(gain) not in (int, float) or not math.isfinite(gain) or not 0 < gain <= 1:
+                raise ValueError(f"WHEEL_GAIN[{name}] phai la so huu han trong (0, 1].")
         self._output = output
         self._sleep = sleeper
         self._closed = False
@@ -246,6 +253,10 @@ class MotorController:
         if self._closed:
             raise RuntimeError("Bo dieu khien da dong.")
 
+        wheel_speeds = {
+            name: speed * self._wheel_gain.get(name, 1.0) if directions[name] is not None else 0.0
+            for name in self._motors
+        }
         try:
             self.stop()
             self._sleep(DIRECTION_CHANGE_DELAY_SECONDS)
@@ -263,9 +274,12 @@ class MotorController:
 
             self._sleep(DIRECTION_CHANGE_DELAY_SECONDS)
             for name, pins in self._motors.items():
-                self._set_channel(pins.pwm, speed if directions[name] is not None else 0.0)
+                self._set_channel(pins.pwm, wheel_speeds[name])
 
             logger.info("%s trong %g giay, PWM %.0f%%", label, seconds, speed * 100)
+            logger.info("PWM tung banh: %s", ", ".join(
+                f"{name}={value:.1%}" for name, value in wheel_speeds.items()
+            ))
             self._sleep(seconds)
         finally:
             # Also covers partial startup and Ctrl+C during the timed wait.

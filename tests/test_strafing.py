@@ -29,7 +29,7 @@ class StrafingTests(unittest.TestCase):
                 motor.strafe(direction, seconds=2, speed=0.25)
                 self.assertEqual(len(snapshots), 1)
                 values = snapshots[0]
-                self.assertEqual([values[ch] for ch in (0, 6, 15, 9)], [16383] * 4)
+                self.assertEqual(tuple(values[ch] for ch in (0, 6, 15, 9)), test_robot.wheel_duties(0.25))
                 for in1, in2, forward in expected:
                     self.assertEqual((values[in1], values[in2]), (65535, 0) if forward else (0, 65535))
                 self.assertTrue(all(v == 0 for v in self.output.values.values()))
@@ -42,7 +42,7 @@ class StrafingTests(unittest.TestCase):
         motor = controller.MotorController(self.output, sleeper=observe)
         motor.strafe("left", 1, 0.3)
         motor.strafe("right", 1)
-        self.assertEqual(snapshots, [(19660,) * 4, (int(config.DEFAULT_SPEED * 65535),) * 4])
+        self.assertEqual(snapshots, [test_robot.wheel_duties(0.3), test_robot.wheel_duties(config.DEFAULT_SPEED)])
 
     def test_inversion_changes_only_the_selected_wheel(self):
         motors = dict(config.MOTORS)
