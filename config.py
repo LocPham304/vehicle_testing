@@ -29,11 +29,15 @@ SERVO_MAX_ANGLE = 80.0
 SERVO_MOVE_WAIT_SECONDS = 1.0
 # Claw endpoints requested by the user: decreasing angle opens the gripper.
 CLAW_MIN_ANGLE = 0.0
-CLAW_MAX_ANGLE = 90.0
+CLAW_MAX_ANGLE = 100.0
 CLAW_OPEN_ANGLE = 0.0
-CLAW_CLOSE_ANGLE = 90.0
+# User reports that 90 degrees leaves a gap; closing needs about 100 degrees.
+CLAW_CLOSE_ANGLE = 100.0
 # User will prepare the claw fully closed before starting the program.
 CLAW_START_ANGLE = CLAW_CLOSE_ANGLE
+# Pi 4 kernel PWM0 routed to BCM 12 by dtoverlay=pwm,pin=12,func=4.
+CLAW_PWM_CHIP = 0
+CLAW_PWM_CHANNEL = 0
 # Nominal time to interpolate the requested angle between endpoints.
 CLAW_MOVE_SECONDS = 2.0
 # Reject shorter requests, which would increase the commanded travel speed.

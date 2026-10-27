@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng GPIO BCM 18 (0–80°), càng dùng GPIO BCM 12 (mở 0°, đóng 90°).
+Tay nâng/hạ dùng GPIO BCM 18 (0–80°), càng dùng GPIO BCM 12 (mở 0°, đóng 100°).
 
 ## Cấu trúc
 
@@ -13,7 +13,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (0–80°), càng dùng GPIO BCM 12 (mở 0°, 
 | --- | --- |
 | `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
-| `hand.py` | Nâng/hạ BCM 18 trong 0–80°; mở/đóng càng BCM 12 ở 0°/90° |
+| `hand.py` | Nâng/hạ BCM 18 trong 0–80°; càng BCM 12 ở 0°/100°, dùng PWM phần cứng |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -189,18 +189,19 @@ chay
 ```
 
 Chỉ dùng `mo_cang [giây]` và `dong_cang [giây]`, không cần lệnh đặt mốc góc.
-Mở yêu cầu **0°**, đóng yêu cầu **90°**, theo khoảng 0–90° người dùng yêu cầu.
+Mở yêu cầu **0°**, đóng yêu cầu **100°**: người dùng xác nhận 90° chưa khép kín,
+cần tăng tới khoảng 100°. Giới hạn riêng của càng là 0–100°.
 Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGLE`,
 `CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ vẫn giới hạn 0–80°.
 Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
 
-**Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 90°**, như người
+**Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 100°**, như người
 dùng đã xác nhận có thể chuẩn bị. `CLAW_START_ANGLE` là vị trí khởi đầu giả định;
 chương trình không tự chạy càng về gốc, không đọc được góc và không phát PWM khi
 khởi tạo. Nếu càng không ở vị trí này, lần phát xung đầu vẫn có thể gây bật nhanh.
 
-`mo_cang 2` chia chuyển động yêu cầu **90° → 0° trong 2 giây**;
-`dong_cang 2` chuyển **0° → 90° trong 2 giây**. Bỏ số giây mặc định 2
+`mo_cang 2` chia chuyển động yêu cầu **100° → 0° trong 2 giây**;
+`dong_cang 2` chuyển **0° → 100° trong 2 giây**. Bỏ số giây mặc định 2
 (`CLAW_MOVE_SECONDS`). Mỗi khoảng tối đa 20 ms (`CLAW_UPDATE_INTERVAL_SECONDS`)
 cập nhật một góc; đường chuyển góc tăng tốc và giảm tốc nhẹ ở hai đầu.
 Thời gian phải hữu hạn và **ít nhất 2 giây** (`CLAW_MIN_MOVE_SECONDS`), không nhận
@@ -209,6 +210,45 @@ Sau góc cuối, chờ thêm `CLAW_SETTLE_SECONDS = 0.1` giây trước khi ng�
 lệnh 2 giây mất ít nhất khoảng **2,1 giây** tổng cộng, có thể dài hơn do lịch chạy hệ điều hành.
 Thời gian này điều khiển lịch gửi góc yêu cầu; chưa xác nhận tốc độ cơ cấu thật.
 `probe_servo.py` vẫn gửi góc trực tiếp, không áp dụng cách chuyển từng bước này.
+
+Trên Pi 4 / Debian 13 Trixie của người dùng, riêng càng dùng **PWM phần cứng của
+kernel** qua `rpi-hardware-pwm`, PWM0 trên BCM 12. Xung được tạo bởi bộ PWM;
+Python chỉ thay đổi độ rộng xung khi chuyển góc. Không tắt/bật PWM hoặc đổi tần số
+ở mỗi bước. Đây là xử lý một nguồn có thể gây giật trong lúc di chuyển; chưa
+xác nhận nguyên nhân trên xe là xung, nguồn điện hay tải cơ khí.
+Các bước góc vẫn được giữ; góc trùng cùng độ rộng xung nguyên µs không gửi lại.
+Thang xung cũ giữ nguyên: 0° → 500 µs; 100° → khoảng 1611 µs.
+Nâng/hạ vẫn dùng RPi.GPIO riêng BCM 18.
+
+Thiết lập một lần theo [hướng dẫn Pi 4 / Trixie](docs/pi4-claw-pwm.md).
+Trong `/boot/firmware/config.txt`, dưới `[all]`, cấu hình riêng BCM 12:
+
+```ini
+dtparam=audio=off
+dtoverlay=pwm,pin=12,func=4
+```
+
+Tắt audio analog để nhường bộ PWM. Không dùng overlay mặc định xuất PWM ra BCM 18,
+vì đó là servo nâng/hạ. Khởi động lại Pi để áp dụng, sau đó chạy từ thư mục
+`vehicle_testing` trong môi trường Python đang dùng:
+
+```sh
+python -m pip install -r requirements.txt
+python main.py
+```
+
+Nếu thiếu quyền ghi `/sys/class/pwm/pwmchip0`, có thể thử với đúng Python hiện tại:
+
+```sh
+sudo "$(command -v python)" main.py
+```
+
+`CLAW_PWM_CHIP=0`, `CLAW_PWM_CHANNEL=0` là cấu hình cho Pi 4; xem hướng dẫn nếu
+kernel đánh số chip khác. Thiếu overlay, quyền truy cập hoặc lỗi phát xung sẽ
+dừng kịch bản, không tự chuyển về PWM cũ. `--dry-run` không nhập thư viện PWM
+phần cứng hoặc truy cập sysfs. Phương án này không cần daemon pigpio; thư viện
+pigpio có hạn chế trên các bản Debian mới.
+Không chạy `probe_servo.py` hay chương trình servo khác cùng lúc với `main.py`.
 
 Mặc định **`CLAW_HOLD_POSITION = False`**: hết thời gian thì gửi duty 0 để ngắt
 PWM riêng BCM 12. Càng không giữ lực kẹp liên tục và vật đang kẹp có thể tuột.
@@ -259,9 +299,9 @@ Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và 
 ### Càng luôn mở hết dù đổi góc: xác định loại servo trước
 
 Nhãn "12G Digital Servo" chưa xác nhận servo định vị hay quay liên tục.
-Các lệnh càng dùng thang điện 180° với hai góc đích 0°/90° theo cấu hình;
+Các lệnh càng dùng thang điện 180° với hai góc đích 0°/100° theo cấu hình;
 đó chưa phải dải cơ khí đã hiệu chỉnh của càng thực tế.
-Theo công thức hiện tại, 0°/90° tương ứng 500/1500 µs. Nếu servo quay
+Theo công thức hiện tại, 0°/100° tương ứng khoảng 500/1611 µs. Nếu servo quay
 liên tục, dải này có thể chỉ yêu cầu quay cùng một chiều; nếu là servo định vị,
 cơ cấu cũng có thể chạm hết hành trình trong dải này. Chưa xác định nguyên nhân
 chỉ từ việc cả các góc đều làm càng mở hết. Ngắt PWM chỉ dừng yêu cầu giữ xung,

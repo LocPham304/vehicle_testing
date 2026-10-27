@@ -16,6 +16,7 @@ from vehicle_testing.config import (
     CLAW_HOLD_POSITION, CLAW_MOVE_SECONDS,
     CLAW_START_ANGLE, CLAW_MIN_MOVE_SECONDS, CLAW_UPDATE_INTERVAL_SECONDS,
     CLAW_SETTLE_SECONDS,
+    CLAW_PWM_CHIP, CLAW_PWM_CHANNEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,66 @@ class GPIOServoOutput:
         finally:
             self._closed = True
             self._gpio.cleanup(self._pin)
+
+
+class HardwarePWMClawOutput:
+    """Kernel hardware PWM0 routed to BCM 12; independent of Python edge timing."""
+
+    def __init__(self, pin: int = CLAW_BCM_PIN) -> None:
+        if pin != CLAW_BCM_PIN:
+            raise ValueError("PWM phan cung chi dieu khien GPIO cang trong config.py.")
+        try:
+            hardware = importlib.import_module("rpi_hardware_pwm")
+        except ImportError as error:
+            raise RuntimeError("Thieu rpi-hardware-pwm: cai requirements.txt tren Raspberry Pi.") from error
+        self._pwm = None
+        self._closed = False
+        self._running = False
+        self._pulse_us: int | None = None
+        try:
+            self._pwm = hardware.HardwarePWM(pwm_channel=CLAW_PWM_CHANNEL,
+                                             hz=SERVO_PWM_FREQUENCY_HZ, chip=CLAW_PWM_CHIP)
+            self.release()
+        except (Exception, KeyboardInterrupt) as error:
+            try:
+                self.close()
+            except Exception:
+                logger.exception("Loi dung PWM phan cung sau khi khoi tao cang that bai")
+            if isinstance(error, Exception):
+                raise RuntimeError(
+                    "Khong mo duoc PWM phan cung cang. Can dtoverlay=pwm,pin=12,func=4, "
+                    f"reboot va quyen ghi /sys/class/pwm/pwmchip{CLAW_PWM_CHIP}. Chi tiet: {error}"
+                ) from error
+            raise
+
+    def set_angle(self, angle: float) -> None:
+        validate_claw_angle(angle)
+        if self._closed:
+            raise RuntimeError("Dau ra cang da dong.")
+        # Preserve the existing electrical scale; only the timing backend changes.
+        pulse_us = round(500 + angle / 180.0 * 2000)
+        if pulse_us != self._pulse_us:
+            duty = pulse_us / (1_000_000 / SERVO_PWM_FREQUENCY_HZ) * 100
+            if self._running:
+                self._pwm.change_duty_cycle(duty)
+            else:
+                self._pwm.start(duty)
+                self._running = True
+            self._pulse_us = pulse_us
+
+    def release(self) -> None:
+        if not self._closed and self._pwm is not None:
+            self._pwm.stop()
+            self._running = False
+            self._pulse_us = None
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            self.release()
+        finally:
+            self._closed = True
 
 
 class ServoController:

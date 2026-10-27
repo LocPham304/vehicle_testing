@@ -1,3 +1,4 @@
 adafruit-blinka
 adafruit-circuitpython-pca9685
 RPi.GPIO; platform_system == "Linux"
+rpi-hardware-pwm; platform_system == "Linux"

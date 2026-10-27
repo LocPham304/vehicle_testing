@@ -16,7 +16,7 @@ from vehicle_testing.config import (
     CLAW_MIN_MOVE_SECONDS, CLAW_SETTLE_SECONDS,
 )
 from vehicle_testing.hand import (
-    DryRunServoOutput, GPIOServoOutput, HandController, ClawController,
+    DryRunServoOutput, GPIOServoOutput, HardwarePWMClawOutput, HandController, ClawController,
     validate_hand_angle, validate_hand_step, validate_claw_seconds,
 )
 from vehicle_testing.controller import (
@@ -69,6 +69,7 @@ Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
 Chay tay_goc truoc nang/ha. Nang/ha dung GPIO BCM {SERVO_BCM_PIN}, gioi han 0..80 do.
 Cang dung GPIO BCM {CLAW_BCM_PIN}; can de cang khep {CLAW_START_ANGLE:g} do truoc khi khoi dong.
+Cang dung PWM phan cung BCM 12; can cau hinh overlay theo README truoc khi chay that.
 Mo/dong cang chia buoc goc trong {CLAW_MOVE_SECONDS:g} giay mac dinh, toi thieu {CLAW_MIN_MOVE_SECONDS:g} giay.
 Sau do cho {CLAW_SETTLE_SECONDS:g} giay de phat goc cuoi; chua do duoc toc do co cau that.
 Tay nang/ha giu PWM; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
@@ -247,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         output = DryRunOutput() if args.dry_run else PCA9685Output()
         controller = MotorController(output)
         hand = HandController(DryRunServoOutput if args.dry_run else GPIOServoOutput)
-        claw_output = DryRunServoOutput if args.dry_run else GPIOServoOutput
+        claw_output = DryRunServoOutput if args.dry_run else HardwarePWMClawOutput
         claw = ClawController(lambda: claw_output(pin=CLAW_BCM_PIN))
         controller.stop()
         run_session(controller, hand, claw)
