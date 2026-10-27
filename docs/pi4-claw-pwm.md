@@ -84,10 +84,12 @@ Nếu thiếu quyền ghi sysfs, thử đúng trình thông dịch Python hiện
 sudo "$(command -v python)" main.py
 ```
 
-Mặc định `CLAW_PWM_CHIP=0`, `CLAW_PWM_CHANNEL=0` trong `config.py` cho Pi 4.
-Nếu không có `pwmchip0`, kiểm tra overlay đã nạp và các chip ở `/sys/class/pwm/`;
-chỉ đổi `CLAW_PWM_CHIP` sau khi xác định chip của bộ PWM này. Không chọn chip
-khác chỉ để bỏ qua thông báo lỗi. Phần mềm không tự quay về PWM cũ khi lỗi cấu hình.
+Sau khi nạp cả overlay càng và nâng/hạ, kết quả thực tế trên Pi đã xác nhận
+`pwmchip0` là `pwm-gpio` BCM 18, `pwmchip1` là bộ PWM phần cứng cho càng.
+Cấu hình hiện tại là `CLAW_PWM_CHIP=1`, `CLAW_PWM_CHANNEL=0`; số chip 1 không
+thay đổi việc BCM 12 vẫn dùng kênh PWM0. Chạy lại `check_lift_pwm.py` nếu số chip
+thay đổi; chỉ đổi `CLAW_PWM_CHIP` sau khi xác định đúng driver phần cứng.
+Không chọn chip khác chỉ để bỏ qua thông báo lỗi. Phần mềm không tự quay về PWM cũ khi lỗi cấu hình.
 
 ## Thử sau khi cập nhật
 

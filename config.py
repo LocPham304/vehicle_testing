@@ -51,8 +51,9 @@ CLAW_OPEN_ANGLE = 0.0
 CLAW_CLOSE_ANGLE = 100.0
 # User will prepare the claw fully closed before starting the program.
 CLAW_START_ANGLE = CLAW_CLOSE_ANGLE
-# Pi 4 kernel PWM0 routed to BCM 12 by dtoverlay=pwm,pin=12,func=4.
-CLAW_PWM_CHIP = 0
+# Pi check with both overlays: pwmchip0 = GPIO 18; pwmchip1 = BCM hardware PWM.
+# BCM 12 still uses channel 0. Recheck with check_lift_pwm.py if numbering changes.
+CLAW_PWM_CHIP = 1
 CLAW_PWM_CHANNEL = 0
 # Nominal time to interpolate the requested angle between endpoints.
 CLAW_MOVE_SECONDS = 2.0

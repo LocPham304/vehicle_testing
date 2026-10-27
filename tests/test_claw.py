@@ -197,11 +197,11 @@ class ClawTests(unittest.TestCase):
         gpio = Mock(BCM=11, OUT=0)
         hardware = Mock()
         lift_pwm, claw_pwm = Mock(), Mock()
-        hardware.HardwarePWM.side_effect = lambda **kwargs: lift_pwm if kwargs["chip"] == 3 else claw_pwm
+        hardware.HardwarePWM.side_effect = lambda **kwargs: lift_pwm if kwargs["chip"] == 0 else claw_pwm
         real_lift, real_claw = main.HandController, main.ClawController
         with patch.dict("sys.modules", {"RPi.GPIO": gpio, "rpi_hardware_pwm": hardware}), \
                 patch.object(main, "PCA9685Output"), \
-                patch.object(self.module, "find_gpio_pwm_chip", return_value=3), \
+                patch.object(self.module, "find_gpio_pwm_chip", return_value=0), \
                 patch.object(self.module, "validate_claw_pwm_chip"), \
                 patch.object(main, "HandController", side_effect=lambda factory, **kwargs: real_lift(factory, sleeper=lambda _: None, **kwargs)), \
                 patch.object(main, "ClawController", side_effect=lambda factory: real_claw(factory, sleeper=lambda _: None)), \
@@ -211,8 +211,8 @@ class ClawTests(unittest.TestCase):
         gpio.PWM.assert_not_called()
         gpio.cleanup.assert_not_called()
         self.assertEqual(hardware.HardwarePWM.call_count, 2)
-        hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=3)
         hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=0)
+        hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=1)
         self.assertTrue(lift_pwm.start.called)
         self.assertTrue(claw_pwm.start.called)
         self.assertEqual(claw_pwm.change_duty_cycle.call_args.args, (2.5,))

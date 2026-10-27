@@ -20,7 +20,7 @@ class HardwareClawTests(unittest.TestCase):
 
     def test_endpoints_continuous_updates_and_duplicate_suppression(self):
         output = self.output()
-        self.hardware.HardwarePWM.assert_called_once_with(pwm_channel=0, hz=50, chip=0)
+        self.hardware.HardwarePWM.assert_called_once_with(pwm_channel=0, hz=50, chip=self.module.CLAW_PWM_CHIP)
         self.pwm.stop.assert_called_once()
         output.set_angle(0)
         self.pwm.start.assert_called_once_with(2.5)

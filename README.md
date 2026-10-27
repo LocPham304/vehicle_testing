@@ -286,14 +286,15 @@ python -s -m pip install --no-user -r requirements.txt
 python main.py
 ```
 
-Nếu thiếu quyền ghi `/sys/class/pwm/pwmchip0`, có thể thử với đúng Python hiện tại:
+Nếu thiếu quyền ghi `/sys/class/pwm`, có thể thử với đúng Python hiện tại:
 
 ```sh
 sudo "$(command -v python)" main.py
 ```
 
-`CLAW_PWM_CHIP=0`, `CLAW_PWM_CHANNEL=0` là cấu hình cho Pi 4; xem hướng dẫn nếu
-kernel đánh số chip khác. Thiếu overlay, quyền truy cập hoặc lỗi phát xung sẽ
+Với cả hai overlay, phép kiểm tra trên Pi đã xác nhận càng dùng `pwmchip1`:
+`CLAW_PWM_CHIP=1`, `CLAW_PWM_CHANNEL=0`. BCM 18 được tìm tự động (hiện `pwmchip0`).
+Chạy lại công cụ kiểm tra nếu kernel đánh số chip khác. Thiếu overlay, quyền truy cập hoặc lỗi phát xung sẽ
 dừng kịch bản, không tự chuyển về PWM cũ. `--dry-run` không nhập thư viện PWM
 phần cứng hoặc truy cập sysfs. Phương án này không cần daemon pigpio; thư viện
 pigpio có hạn chế trên các bản Debian mới.
