@@ -178,9 +178,14 @@ Trong `config.py`, cấu hình thử đã được đổi theo chiều vật lý
 
 ```python
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = 650.0   # Hạ −10°.
+SERVO_DOWN_PULSE_US = 600.0   # Mốc hạ thử tiếp cho nhãn −10°.
 SERVO_UP_PULSE_US = 1400.0    # Nâng 80°.
 ```
+
+Người dùng xác nhận mốc nâng đã tới vị trí mong muốn; hạ ở 650 µs dừng trên
+đường vàng trong hình, chưa tới đường đỏ và không phải bật lại sau ngắt PWM.
+Giữ 1400 µs cho nâng, thử giảm riêng mốc hạ xuống 600 µs. Đây chưa phải kết quả
+hiệu chỉnh hoàn tất; không suy ra xung từ số độ trên hình hoặc tự đi dưới 500 µs.
 
 `SERVO_CALIBRATED=False` thông báo hai xung chưa được đo trên xe, không còn khóa
 lệnh. Constructor đầu ra sẽ cảnh báo rõ chế độ thử. Xung thiếu, không hữu hạn,

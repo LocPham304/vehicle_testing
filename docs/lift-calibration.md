@@ -5,22 +5,25 @@ thời gian còn lại giật mạnh; tay đã chạm hoặc ép vào khung/đi�
 Lịch gửi góc trong phần mềm không cho biết vị trí thật. Tăng số giây không tránh
 được việc các góc tiếp theo tiếp tục ép vào điểm chặn.
 
-Người dùng yêu cầu giữ hai mốc hạ −10°/nâng 80° để tự thử. Bản hiện tại cho phép
-chạy thật với xung thử 1500 µs ở mốc −10° và 500 µs ở mốc 80°, giữ chiều nâng
-bằng cách giảm xung như code cũ. Hai giá trị này chưa được đo trên cơ cấu;
-đổi sang kernel pwm-gpio không chứng minh đã tránh được điểm chặn.
+Người dùng yêu cầu giữ hai mốc hạ −10°/nâng 80° để tự thử. Sau khi xác nhận
+xung tăng làm tay nâng, cấu hình được đổi sang hạ 650 µs/nâng 1400 µs.
+Phản hồi mới: mốc nâng đã tới vị trí mong muốn, mốc hạ chỉ tới đường vàng,
+chưa tới đường đỏ, không phải đi tới đích rồi bật lại sau khi tắt PWM.
+Bước thử tiếp chỉ giảm mốc hạ xuống 600 µs, giữ nguyên mốc nâng 1400 µs.
+Chưa xác nhận 600 µs sẽ đạt đúng vị trí mong muốn hoặc xử lý được rung nhẹ.
 
 ## Cấu hình đang dùng
 
-- `SERVO_DOWN_PULSE_US=1500.0`: xung thử cho mốc hạ −10°.
-- `SERVO_UP_PULSE_US=500.0`: xung thử cho mốc nâng 80°.
+- `SERVO_DOWN_PULSE_US=600.0`: xung thử tiếp cho mốc hạ −10°; mốc cũ 650 µs hạ chưa đủ.
+- `SERVO_UP_PULSE_US=1400.0`: mốc nâng đã được người dùng xác nhận tới vị trí mong muốn.
 - `SERVO_CALIBRATED=False`: thông báo chưa đo xung, không chặn thử.
 
 Trước khi khởi động, chuẩn bị tay ở mốc hạ −10° như người dùng đã xác nhận.
 Không tự ép tay xuống hết điểm chặn cơ khí. Bộ điều khiển
 không có phản hồi góc và lần phát xung đầu vẫn sẽ yêu cầu mốc khởi đầu này.
 
-1500/500 µs là cấu hình giả định cho lần thử được người dùng yêu cầu.
+600/1400 µs là cấu hình hiện tại; các số 1500/500 µs ở phần lịch sử dưới đây
+thuộc phép thử cũ đã bị loại bỏ. Không tự suy ra giá trị xung từ góc trên hình vẽ.
 500–2500 µs là dải điện của servo DS-S006M, không phải hành trình an toàn của cơ cấu lắp ráp.
 Các số −10° và 80° là tên mốc của tay, không cung cấp đủ thông tin để tự suy ra xung.
 Chương trình chưa có cảm biến góc, công tắc giới hạn hoặc đo dòng để tự nhận ra
