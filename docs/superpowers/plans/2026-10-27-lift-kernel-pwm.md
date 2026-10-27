@@ -59,3 +59,10 @@
 - A focused test was observed RED before the module existed, then all eight probe tests passed.
 - Full suite: 153 tests passed; standalone dry-run '+' reported 1510 us with no hardware output; git diff --check passed.
 - Independent review found no actionable issues and independently passed all 153 tests. Physical timing, shaft motion, stop loading and load support remain unverified; the probe is diagnostic, not a completed motion fix.
+
+## Subsequent physical result
+
+- User tried '+' twice (1510 and 1520 us): arm rose a little but jerked strongly.
+- Retracted the physical '+' probing instructions at the upper stop. Short on/off bursts are not slow-motion control and can contribute to a kick; an absolute pulse request can still mismatch the shaft position.
+- Increasing pulse produced upward movement in this observation, so the previously assumed decreasing-pulse lift direction is not established for the mounted mechanism.
+- No replacement pulse guesses, software actuation changes, or calibration claims. Further physical diagnosis requires signal/power measurements or experienced hardware support; sysfs idle readback cannot resolve these causes.

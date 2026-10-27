@@ -17,6 +17,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
+| `dual_pwm_test.py` | File thử độc lập hai kênh PWM phần cứng BCM 12/13; có dry-run và kiểm tra chỉ đọc |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -131,6 +132,10 @@ cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
 
 ## Tay nâng/hạ qua GPIO BCM 18
 
+**Phương án thử riêng BCM 12/13:** xem [dual-pwm-test.md](docs/dual-pwm-test.md).
+File `dual_pwm_test.py` không sửa chương trình chính; thử thật cần chuyển dây
+nâng/hạ sang BCM 13 và đổi overlay. Khi chưa chuyển, chỉ dùng `--dry-run`.
+
 Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng driver
 **`pwm-gpio` của kernel ở 50 Hz**, qua API sysfs của `rpi-hardware-pwm`.
 Chân này đã được người dùng xác nhận bằng phép thử `probe_servo.py --pin 18`.
@@ -174,12 +179,12 @@ Bỏ số giây thì mặc định 2 giây (`SERVO_MOVE_SECONDS`); thời gian p
 Lệnh đặt góc tay cũ đã được bỏ khỏi CLI.
 
 **Nâng/hạ đã được cho phép chạy thử theo yêu cầu người dùng**, giữ mốc −10°/80°.
-Trong `config.py`, cấu hình thử giữ chiều nâng bằng cách giảm xung như code cũ:
+Trong `config.py`, cấu hình thử đã được đổi theo chiều vật lý thực tế (xung tăng là nâng):
 
 ```python
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = 1500.0  # Hạ −10°.
-SERVO_UP_PULSE_US = 500.0     # Nâng 80°.
+SERVO_DOWN_PULSE_US = 650.0   # Hạ −10°.
+SERVO_UP_PULSE_US = 1400.0    # Nâng 80°.
 ```
 
 `SERVO_CALIBRATED=False` thông báo hai xung chưa được đo trên xe, không còn khóa
@@ -189,10 +194,10 @@ Người dùng đã báo tay chạm/ép điểm chặn với ánh xạ cũ; đ�
 hai đầu hành trình đã đúng. Nếu chạm khung, dùng Ctrl+C để dừng phép thử và sửa
 hai mốc xung theo thực tế. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
 
-Phép thử mới nhất `nang 4` vẫn bật lên ngay và chạm chặn. Các số 1500/500 µs
-chưa được xác nhận phù hợp. Dùng công cụ dò từng bước nhỏ theo ghi chú trên để
-tìm mốc, thay vì lặp lại toàn hành trình. Công cụ mới không tự chuyển về 1500 µs
-khi mở; chỉ phát một đợt xung ngắn sau từng dấu `+`/`-` của người dùng.
+Phép thử `nang 4` bật lên ngay và chạm chặn; lần dò 1510/1520 µs sau đó vẫn
+giật rất mạnh. Các số 1500/500 µs chưa được xác nhận phù hợp. Đã dừng hướng
+dẫn thử tiếp các đợt xung ngắn tại điểm chặn. Công cụ dò không bảo đảm chuyển
+động chậm; xem ghi chú trên về dữ liệu cần đo trước khi chọn mốc mới.
 
 **Trước khi khởi động, để tay ở vị trí hạ −10°**, theo vị trí khởi đầu người dùng
 đã xác nhận có thể chuẩn bị. Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;

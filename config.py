@@ -31,13 +31,11 @@ SERVO_UP_ANGLE = 80.0
 SERVO_DOWN_ANGLE = -10.0
 # User will prepare the arm at the lowered position before starting.
 SERVO_START_ANGLE = SERVO_DOWN_ANGLE
-# User-authorized test profile: preserve the previous decreasing-pulse lift
-# direction (electrical angle = 80 - logical angle). These endpoints have NOT
-# been measured on the mounted mechanism; it previously contacted its stops.
-# This flag reports measurement status only; it no longer blocks testing.
+# Measured physical direction: increasing pulse raises the arm.
+# Safe initial test endpoints avoiding stops: DOWN at 650 us, UP at 1400 us.
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = 1500.0  # Logical -10 -> electrical 90 degrees.
-SERVO_UP_PULSE_US = 500.0     # Logical 80 -> electrical 0 degrees.
+SERVO_DOWN_PULSE_US = 650.0   # Logical -10 -> Lowered resting position (~3.25% duty).
+SERVO_UP_PULSE_US = 1400.0    # Logical 80 -> Raised position (~7% duty, avoids upper stop).
 SERVO_MOVE_SECONDS = 2.0
 SERVO_MIN_MOVE_SECONDS = 2.0
 SERVO_UPDATE_INTERVAL_SECONDS = 0.02

@@ -53,24 +53,31 @@ Không dùng lại phép thử toàn hành trình 1500→500 µs để dò mốc
 (mặc định 40 ms, tối đa 100 ms), sau đó tắt. Không tự quét, không sửa config,
 không chạy càng. Chế độ thật chỉ nhận lệnh trực tiếp ở terminal, không pipe kịch bản.
 
-Với tay hiện vẫn ở trên cao sau phép thử, bắt đầu bằng cửa sổ nhỏ quanh xung
-tham chiếu đã dùng. 1500 µs ở đây là tham chiếu từ source, chưa phải số đo
-ứng với vị trí tay hiện tại. Thoát `main.py`, cập nhật file mới rồi chạy:
+**Kết quả dò tiếp theo:** người dùng đã gửi hai lệnh `+`, lần lượt yêu cầu
+1510 và 1520 µs trong 40 ms. Tay nâng thêm một chút nhưng giật rất mạnh.
+Không tiếp tục quy trình tăng xung 1500→1600 µs từ vị trí trên cao. Hướng tăng
+xung đã quan sát làm nâng thêm, không cung cấp một mốc hạ hoặc mốc khởi đầu an toàn.
+
+Phép bật–tắt ngắn chỉ giới hạn thời gian yêu cầu phát; nó có thể góp phần tạo
+cú giật và không phải cách điều khiển tốc độ chậm. Bước 10 µs là chênh lệch hai
+yêu cầu, không phải sai lệch giữa góc yêu cầu và góc trục thật. Nếu xung tuyệt
+đối không khớp vị trí, servo vẫn có thể tạo lực lớn. Đã rút hướng dẫn thử tăng
+xung tại điểm chặn; không thay bằng một cặp xung phỏng đoán khác.
+
+Chưa phân biệt được phần giật đến từ tải/điểm chặn, nguồn servo, hoặc độ ổn định
+của xung thật. Cần kiểm tra tín hiệu BCM 18 và nguồn khi có tải bằng thiết bị
+đo hoặc người có kinh nghiệm phần cứng, trước khi chọn mốc và cách phát tiếp.
+Không có phép đọc sysfs hay unit test nào thay thế phép đo này. Giữ CLI
+−10°/80° theo yêu cầu, nhưng chưa xác nhận hai xung ứng với hai vị trí thực tế.
+
+Để chỉ xem cách công cụ tạo yêu cầu mà không phát PWM:
 
 ```sh
-sudo .venv/bin/python probe_lift_pwm.py --start-us 1500 --min-us 1500 --max-us 1600
+.venv/bin/python probe_lift_pwm.py --start-us 1500 --min-us 1500 --max-us 1600 --dry-run
 ```
 
-Mở chương trình chưa phát xung 1500 µs. Nhập `+` rồi Enter đúng một lần:
-chương trình yêu cầu 1510 µs trong 40 ms rồi tắt PWM. Quan sát tay rời điểm chặn,
-đứng yên hay giật; chưa tự nhập liên tiếp để đi hết cửa sổ. Nếu giật hoặc ép vào
-khung, dùng `thoat` và dừng dò theo hướng đó. Xung ngắn vẫn có thể tạo lực vào
-điểm chặn, không bảo đảm an toàn cơ khí hoặc thời gian thực chính xác 40 ms.
 Ngắt PWM không giữ lực đỡ tay; việc tay hiện chưa tụt không chứng minh giữ được
-với tải khác. Chỉ thử tiếp sau khi đã quan sát kết quả bước đầu.
-
-Thêm `--dry-run` để xem lệnh mà không mở PWM. Các số µs là tín hiệu yêu cầu,
-không phải số độ hoặc kết quả đo trục servo.
+với tải khác. Các số µs là tín hiệu yêu cầu, không phải số độ hoặc kết quả đo trục.
 
 `SERVO_HOLD_POSITION=True` đang giữ lực đỡ tay. Không đổi thành False để che rung:
 ngắt xung có thể làm tay hạ theo tải và không sửa được việc đi quá hành trình.
@@ -132,3 +139,4 @@ khởi động lại PWM giữa các bước. Vẫn giữ lực nâng sau lệnh
 - [Raspberry Pi Linux 6.12: overlay pwm-gpio và tham số gpio](https://github.com/raspberrypi/linux/blob/rpi-6.12.y/arch/arm/boot/dts/overlays/pwm-gpio-overlay.dts)
 - [DS-S006M: dải xung và giới hạn của servo](https://www.dspowerservo.com/ds-s006m-metal-gear-9g-servo-micro-servo-product/)
 - [Adafruit: hiệu chỉnh xung và tránh giới hạn cơ khí](https://learn.adafruit.com/16-channel-pwm-servo-driver/using-the-adafruit-library)
+- [Pololu: xung điều khiển vị trí, chiều quay và giới hạn cần hiệu chỉnh theo servo](https://www.pololu.com/blog/17/servo-control-interface-in-detail)
