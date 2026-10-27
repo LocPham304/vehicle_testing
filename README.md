@@ -178,18 +178,17 @@ Trong `config.py`, cấu hình thử đã được đổi theo chiều vật lý
 
 ```python
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = 600.0   # Mốc hạ thử tiếp cho nhãn −10°.
+SERVO_DOWN_PULSE_US = 450.0   # Mốc hạ người dùng đã thử và chọn.
 SERVO_UP_PULSE_US = 1400.0    # Nâng 80°.
 ```
 
-Người dùng xác nhận mốc nâng đã tới vị trí mong muốn; hạ ở 650 µs dừng trên
-đường vàng trong hình, chưa tới đường đỏ và không phải bật lại sau ngắt PWM.
-Giữ 1400 µs cho nâng, thử giảm riêng mốc hạ xuống 600 µs. Đây chưa phải kết quả
-hiệu chỉnh hoàn tất; không suy ra xung từ số độ trên hình hoặc tự đi dưới 500 µs.
+Người dùng xác nhận hạ 450 µs phù hợp sau khi tự thử các thông số; giữ nâng
+1400 µs đang tạm ổn. 450 µs là mốc riêng của cơ cấu này, thấp hơn dải danh định
+500–2500 µs được nêu cho DS-S006M; không áp dụng như mặc định cho servo khác.
 
 `SERVO_CALIBRATED=False` thông báo hai xung chưa được đo trên xe, không còn khóa
 lệnh. Constructor đầu ra sẽ cảnh báo rõ chế độ thử. Xung thiếu, không hữu hạn,
-trùng nhau hoặc ngoài 500–2500 µs vẫn bị từ chối trước khi mở PWM.
+trùng nhau hoặc ngoài 450–2500 µs vẫn bị từ chối trước khi mở PWM nâng/hạ.
 Người dùng đã báo tay chạm/ép điểm chặn với ánh xạ cũ; đổi driver không chứng minh
 hai đầu hành trình đã đúng. Nếu chạm khung, dùng Ctrl+C để dừng phép thử và sửa
 hai mốc xung theo thực tế. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
@@ -209,8 +208,9 @@ chặn các lệnh tay tiếp theo; cần chuẩn bị lại mốc hạ và kh�
 
 Các số −10°/80° là mốc góc quy ước của cơ cấu. Chương trình
 nội suy giữa `SERVO_DOWN_PULSE_US` và `SERVO_UP_PULSE_US`; không tự suy ra xung từ
-số độ; cấu hình thử tương đương góc điện servo = 80° − góc tay. Xung phải hữu hạn trong 500–2500 µs theo dải DS-S006M, nhưng khoảng này
-chỉ là ràng buộc điện: nó không bảo đảm cơ cấu được phép đi hết khoảng đó.
+số độ. Xung nâng/hạ được kiểm tra trong 450–2500 µs để chấp nhận mốc 450 µs
+người dùng đã thử; đây là giới hạn phần mềm, không xác nhận toàn khoảng đó
+là hành trình cơ khí cho phép.
 
 Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;
 chương trình gửi lệnh dừng bánh trước khi điều khiển tay. BCM 18 dùng bộ định thời

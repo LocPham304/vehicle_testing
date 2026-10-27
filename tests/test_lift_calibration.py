@@ -45,7 +45,7 @@ class LiftCalibrationTests(unittest.TestCase):
 
     def test_bad_calibration_never_opens_gpio(self):
         for down, up in ((None, None), (1420, None), (1420, 1420),
-                         (499, 1080), (1420, 2501), (float("nan"), 1080)):
+                         (449, 1080), (1420, 2501), (float("nan"), 1080)):
             with self.subTest(down=down, up=up), patch.multiple(
                     self.module, SERVO_CALIBRATED=True, SERVO_DOWN_PULSE_US=down,
                     SERVO_UP_PULSE_US=up, create=True):

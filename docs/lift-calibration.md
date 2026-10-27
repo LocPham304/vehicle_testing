@@ -9,12 +9,13 @@ Người dùng yêu cầu giữ hai mốc hạ −10°/nâng 80° để tự th�
 xung tăng làm tay nâng, cấu hình được đổi sang hạ 650 µs/nâng 1400 µs.
 Phản hồi mới: mốc nâng đã tới vị trí mong muốn, mốc hạ chỉ tới đường vàng,
 chưa tới đường đỏ, không phải đi tới đích rồi bật lại sau khi tắt PWM.
-Bước thử tiếp chỉ giảm mốc hạ xuống 600 µs, giữ nguyên mốc nâng 1400 µs.
-Chưa xác nhận 600 µs sẽ đạt đúng vị trí mong muốn hoặc xử lý được rung nhẹ.
+Sau khi tự thử các thông số, người dùng chọn mốc hạ 450 µs là phù hợp và xác
+nhận nâng 1400 µs tạm ổn. Cấu hình được cập nhật theo hai mốc này; chưa kết luận
+đã xử lý hết rung nhẹ hoặc đã đo góc thật.
 
 ## Cấu hình đang dùng
 
-- `SERVO_DOWN_PULSE_US=600.0`: xung thử tiếp cho mốc hạ −10°; mốc cũ 650 µs hạ chưa đủ.
+- `SERVO_DOWN_PULSE_US=450.0`: mốc hạ người dùng đã thử và chọn; mốc cũ 650 µs hạ chưa đủ.
 - `SERVO_UP_PULSE_US=1400.0`: mốc nâng đã được người dùng xác nhận tới vị trí mong muốn.
 - `SERVO_CALIBRATED=False`: thông báo chưa đo xung, không chặn thử.
 
@@ -22,9 +23,12 @@ Trước khi khởi động, chuẩn bị tay ở mốc hạ −10° như ngư�
 Không tự ép tay xuống hết điểm chặn cơ khí. Bộ điều khiển
 không có phản hồi góc và lần phát xung đầu vẫn sẽ yêu cầu mốc khởi đầu này.
 
-600/1400 µs là cấu hình hiện tại; các số 1500/500 µs ở phần lịch sử dưới đây
+450/1400 µs là cấu hình hiện tại; các số 1500/500 µs ở phần lịch sử dưới đây
 thuộc phép thử cũ đã bị loại bỏ. Không tự suy ra giá trị xung từ góc trên hình vẽ.
-500–2500 µs là dải điện của servo DS-S006M, không phải hành trình an toàn của cơ cấu lắp ráp.
+500–2500 µs là dải danh định được nêu cho DS-S006M, không phải hành trình an toàn
+của cơ cấu lắp ráp. Mốc 450 µs là ngoại lệ theo thử nghiệm người dùng trên tay
+hiện tại. Bộ kiểm tra riêng nâng/hạ cho phép 450–2500 µs và vẫn chặn dưới
+450 µs; phần càng và các công cụ dò khác không đổi giới hạn vì thay đổi này.
 Các số −10° và 80° là tên mốc của tay, không cung cấp đủ thông tin để tự suy ra xung.
 Chương trình chưa có cảm biến góc, công tắc giới hạn hoặc đo dòng để tự nhận ra
 tay đã chạm chặn. Nếu gặp điểm chặn, dùng Ctrl+C để dừng và hiệu chỉnh lại hai

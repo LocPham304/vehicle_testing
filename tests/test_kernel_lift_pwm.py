@@ -108,6 +108,19 @@ class KernelLiftOutputTests(unittest.TestCase):
         output.set_angle(80)
         self.assertEqual(self.pwm.start.call_count, 2)
 
+    def test_user_tested_450_us_lift_endpoint_is_accepted_but_lower_values_are_rejected(self):
+        with patch.multiple(self.module, SERVO_DOWN_PULSE_US=450.0, SERVO_UP_PULSE_US=1400.0):
+            output = self.output()
+            output.set_angle(-10)
+            self.pwm.start.assert_called_once_with(2.25)
+            output.set_angle(80)
+            self.assertAlmostEqual(self.pwm.change_duty_cycle.call_args.args[0], 7.0)
+        self.pwm.change_duty_cycle.reset_mock()
+        with patch.object(self.module, "SERVO_DOWN_PULSE_US", 449.0):
+            with self.assertRaises(ValueError):
+                output.set_angle(-10)
+        self.pwm.change_duty_cycle.assert_not_called()
+
     def test_unmeasured_profile_opens_kernel_output_with_an_explicit_warning(self):
         with patch.object(self.module, "SERVO_CALIBRATED", False):
             with self.assertLogs(self.module.__name__, level="WARNING") as logs:

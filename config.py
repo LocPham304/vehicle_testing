@@ -32,11 +32,11 @@ SERVO_DOWN_ANGLE = -10.0
 # User will prepare the arm at the lowered position before starting.
 SERVO_START_ANGLE = SERVO_DOWN_ANGLE
 # Measured physical direction: increasing pulse raises the arm.
-# User reports UP=1400 us reaches the desired raised position.
-# DOWN=650 us stops above the desired lower position; try 600 us next.
-# The new lower endpoint remains a trial, not a measured mechanical limit.
+# User-tested endpoints: DOWN=450 us fits the desired lower position;
+# keep UP=1400 us, which the user reports is provisionally suitable.
+# The 450 us lower limit is specific to this lift, not a general servo default.
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = 600.0   # Logical -10 -> Trial lower endpoint (3% duty).
+SERVO_DOWN_PULSE_US = 450.0   # User-tested lower endpoint (2.25% duty).
 SERVO_UP_PULSE_US = 1400.0    # Logical 80 -> Raised position (~7% duty, avoids upper stop).
 SERVO_MOVE_SECONDS = 2.0
 SERVO_MIN_MOVE_SECONDS = 2.0

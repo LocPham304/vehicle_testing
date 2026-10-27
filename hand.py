@@ -38,12 +38,12 @@ def validate_hand_seconds(seconds: float) -> None:
 
 
 def validate_hand_calibration() -> None:
-    """Validate pulse settings; unmeasured settings are allowed for user testing."""
+    """Validate lift pulses, including the user's tested 450 us lower endpoint."""
     pulses = (SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US)
     if any(
             not isinstance(pulse, (int, float)) or not math.isfinite(pulse)
-            or not 500 <= pulse <= 2500 for pulse in pulses):
-        raise ValueError("Can cau hinh hai moc xung nang/ha huu han trong [500, 2500] us o config.py.")
+            or not 450 <= pulse <= 2500 for pulse in pulses):
+        raise ValueError("Can cau hinh hai moc xung nang/ha huu han trong [450, 2500] us o config.py.")
     if SERVO_UP_PULSE_US == SERVO_DOWN_PULSE_US or SERVO_UP_ANGLE <= SERVO_DOWN_ANGLE:
         raise ValueError("Hai moc hieu chinh nang/ha phai khac nhau va dung thu tu goc.")
 
