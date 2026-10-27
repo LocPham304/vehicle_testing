@@ -16,6 +16,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `hand.py` | Nâng/hạ BCM 18 qua kernel pwm-gpio; càng BCM 12 dùng PWM phần cứng |
 | `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
+| `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -187,6 +188,11 @@ trùng nhau hoặc ngoài 500–2500 µs vẫn bị từ chối trước khi m�
 Người dùng đã báo tay chạm/ép điểm chặn với ánh xạ cũ; đổi driver không chứng minh
 hai đầu hành trình đã đúng. Nếu chạm khung, dùng Ctrl+C để dừng phép thử và sửa
 hai mốc xung theo thực tế. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
+
+Phép thử mới nhất `nang 4` vẫn bật lên ngay và chạm chặn. Các số 1500/500 µs
+chưa được xác nhận phù hợp. Dùng công cụ dò từng bước nhỏ theo ghi chú trên để
+tìm mốc, thay vì lặp lại toàn hành trình. Công cụ mới không tự chuyển về 1500 µs
+khi mở; chỉ phát một đợt xung ngắn sau từng dấu `+`/`-` của người dùng.
 
 **Trước khi khởi động, để tay ở vị trí hạ −10°**, theo vị trí khởi đầu người dùng
 đã xác nhận có thể chuẩn bị. Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;

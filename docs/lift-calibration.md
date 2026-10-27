@@ -29,6 +29,49 @@ mốc theo vị trí thực tế còn khoảng hở. Không cần đổi dây BC
 Xung thiếu, không hữu hạn, bằng nhau hoặc ngoài dải điện vẫn bị từ chối trước
 khi mở đầu ra; lỗi/ngắt giữa chuyển động vẫn làm mất mốc vị trí và cần khởi động lại.
 
+## Kết quả thử thật và bước dò mốc
+
+Người dùng đã thử `nang 4`: tay bật lên ngay khi `chay`, tới điểm chặn rồi giật;
+Ctrl+C kết thúc phát PWM và tay vẫn ở trên cao. Trên Pi, đã đọc được:
+
+```text
+period: 20000000
+duty_cycle: 0
+polarity: normal
+enable: 0
+```
+
+Đây là cấu hình 50 Hz và trạng thái đã tắt sau Ctrl+C, không phải phép đo độ
+ổn định của xung lúc servo chạy. Source gửi ngay 1500 µs ở thời điểm đầu, trước
+vòng chia bước. Nhãn hạ −10° đang gán cho xung này chưa khớp với một vị trí hạ
+đã xác nhận, nên chưa thể coi lần chuyển đầu là chuyển chậm từ đúng vị trí thật.
+Không dùng lại phép thử toàn hành trình 1500→500 µs để dò mốc.
+
+`probe_lift_pwm.py` là công cụ dò riêng cho driver kernel BCM 18, không dùng
+`RPi.GPIO`. Khởi động và Enter rỗng không mở PWM. Mỗi dấu `+`/`-` thay đổi
+5/10/20 µs trong cửa sổ tối đa 200 µs; mỗi lần chỉ yêu cầu một đợt xung ngắn
+(mặc định 40 ms, tối đa 100 ms), sau đó tắt. Không tự quét, không sửa config,
+không chạy càng. Chế độ thật chỉ nhận lệnh trực tiếp ở terminal, không pipe kịch bản.
+
+Với tay hiện vẫn ở trên cao sau phép thử, bắt đầu bằng cửa sổ nhỏ quanh xung
+tham chiếu đã dùng. 1500 µs ở đây là tham chiếu từ source, chưa phải số đo
+ứng với vị trí tay hiện tại. Thoát `main.py`, cập nhật file mới rồi chạy:
+
+```sh
+sudo .venv/bin/python probe_lift_pwm.py --start-us 1500 --min-us 1500 --max-us 1600
+```
+
+Mở chương trình chưa phát xung 1500 µs. Nhập `+` rồi Enter đúng một lần:
+chương trình yêu cầu 1510 µs trong 40 ms rồi tắt PWM. Quan sát tay rời điểm chặn,
+đứng yên hay giật; chưa tự nhập liên tiếp để đi hết cửa sổ. Nếu giật hoặc ép vào
+khung, dùng `thoat` và dừng dò theo hướng đó. Xung ngắn vẫn có thể tạo lực vào
+điểm chặn, không bảo đảm an toàn cơ khí hoặc thời gian thực chính xác 40 ms.
+Ngắt PWM không giữ lực đỡ tay; việc tay hiện chưa tụt không chứng minh giữ được
+với tải khác. Chỉ thử tiếp sau khi đã quan sát kết quả bước đầu.
+
+Thêm `--dry-run` để xem lệnh mà không mở PWM. Các số µs là tín hiệu yêu cầu,
+không phải số độ hoặc kết quả đo trục servo.
+
 `SERVO_HOLD_POSITION=True` đang giữ lực đỡ tay. Không đổi thành False để che rung:
 ngắt xung có thể làm tay hạ theo tải và không sửa được việc đi quá hành trình.
 
@@ -74,7 +117,8 @@ kể cả sau khi thoát `main.py`. Không có phương án tự quay về đầ
 Thư viện `rpi-hardware-pwm` có sẵn trong requirements dùng được qua sysfs của
 provider này; không cần thêm daemon hoặc chuyển dây.
 
-Khi tay ở mốc hạ, chạy `sudo .venv/bin/python main.py` và thử riêng
+Sau khi tìm được hai xung không ép vào chặn và cập nhật config, khi tay ở mốc hạ,
+chạy `sudo .venv/bin/python main.py` và thử riêng
 `nang 4`, `chay`; quan sát trước khi thử `ha 4`, `chay`.
 Sau khi đo lại hai xung theo cơ cấu, có thể thay `SERVO_DOWN_PULSE_US`,
 `SERVO_UP_PULSE_US` và đặt `SERVO_CALIBRATED=True` để ghi nhận đã hiệu chỉnh.

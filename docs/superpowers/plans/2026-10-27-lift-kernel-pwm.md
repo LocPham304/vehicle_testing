@@ -49,3 +49,13 @@
 - Observed the unmeasured profile tests fail under the old interlock, then pass after the change.
 - Full suite: 145 tests passed. No physical movement, boot edits, commits or pushes.
 - Independent review: no actionable regressions; reviewer also passed all 145 tests. Updated the interrupted-motion message to refer to the assumed lower position rather than requiring measured calibration.
+
+## Physical feedback and manual pulse probe
+
+- User reports nang 4 jumps immediately, contacts upper stop and jitters until Ctrl+C; arm remains raised after PWM is disabled.
+- Pi readback: period 20000000 ns, duty 0, normal polarity, disabled. This confirms idle configuration, not pulse timing quality.
+- Kept the user's main CLI and config unchanged; no guessed replacement pulse endpoints.
+- Added standalone probe_lift_pwm.py: lazy hardware open, no launch pulse, +/- at most 20 us per command, window at most 200 us, requested bursts 20..100 ms then stop, terminal-only physical input, dry-run support, lift provider discovery only.
+- A focused test was observed RED before the module existed, then all eight probe tests passed.
+- Full suite: 153 tests passed; standalone dry-run '+' reported 1510 us with no hardware output; git diff --check passed.
+- Independent review found no actionable issues and independently passed all 153 tests. Physical timing, shaft motion, stop loading and load support remain unverified; the probe is diagnostic, not a completed motion fix.
