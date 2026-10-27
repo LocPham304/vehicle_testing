@@ -172,33 +172,33 @@ Bỏ số giây thì mặc định 2 giây (`SERVO_MOVE_SECONDS`); thời gian p
 ít nhất 2 giây (`SERVO_MIN_MOVE_SECONDS`). Không nhận thêm góc hoặc PWM.
 Lệnh đặt góc tay cũ đã được bỏ khỏi CLI.
 
-**Nâng/hạ thật hiện bị khóa chờ hiệu chỉnh xung**. Người dùng đã xác nhận tay
-chạm/ép vào điểm chặn, tới đích trong khoảng 1 giây rồi giật trong thời gian còn
-lại. Dải xung giả định cũ không còn được dùng làm mặc định. Trong `config.py`:
+**Nâng/hạ đã được cho phép chạy thử theo yêu cầu người dùng**, giữ mốc −10°/80°.
+Trong `config.py`, cấu hình thử giữ chiều nâng bằng cách giảm xung như code cũ:
 
 ```python
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = None
-SERVO_UP_PULSE_US = None
+SERVO_DOWN_PULSE_US = 1500.0  # Hạ −10°.
+SERVO_UP_PULSE_US = 500.0     # Nâng 80°.
 ```
 
-Chỉ điền hai xung đã được xác nhận nằm trong hành trình tự do, có khoảng hở với
-điểm chặn, rồi mới bật cờ hiệu chỉnh. Không lấy hai giới hạn từ bảng thông số servo
-làm giới hạn của cơ cấu đang lắp. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
-Khóa được kiểm tra trước khi mở GPIO; `--dry-run`, lệnh càng và bánh vẫn dùng được.
+`SERVO_CALIBRATED=False` thông báo hai xung chưa được đo trên xe, không còn khóa
+lệnh. Constructor đầu ra sẽ cảnh báo rõ chế độ thử. Xung thiếu, không hữu hạn,
+trùng nhau hoặc ngoài 500–2500 µs vẫn bị từ chối trước khi mở PWM.
+Người dùng đã báo tay chạm/ép điểm chặn với ánh xạ cũ; đổi driver không chứng minh
+hai đầu hành trình đã đúng. Nếu chạm khung, dùng Ctrl+C để dừng phép thử và sửa
+hai mốc xung theo thực tế. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
 
-**Sau khi hiệu chỉnh, trước khi khởi động, để tay đúng vị trí hạ ứng với
-`SERVO_DOWN_PULSE_US` (mốc −10°)**, còn khoảng hở với điểm chặn, không ép xuống
-đáy hành trình cơ khí. Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;
+**Trước khi khởi động, để tay ở vị trí hạ −10°**, theo vị trí khởi đầu người dùng
+đã xác nhận có thể chuẩn bị. Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;
 khởi tạo không tự phát xung hoặc đưa tay về gốc. Các lệnh chuyển góc theo từng
 bước tối đa 20 ms, tăng/giảm tốc nhẹ ở hai đầu, sau đó chờ thêm 0,1 giây.
 `nang 4` chuyển yêu cầu −10° → 80° trong 4 giây; `ha 4` đi ngược lại.
 Gửi lại cùng một đích đã yêu cầu sẽ bỏ qua. Lỗi/ngắt giữa chừng làm mất mốc và
-chặn các lệnh tay tiếp theo; cần chuẩn bị lại đúng mốc hạ đã hiệu chỉnh và khởi động lại.
+chặn các lệnh tay tiếp theo; cần chuẩn bị lại mốc hạ và khởi động lại.
 
-Các số −10°/80° là mốc góc quy ước của cơ cấu. Khi đã hiệu chỉnh, chương trình
+Các số −10°/80° là mốc góc quy ước của cơ cấu. Chương trình
 nội suy giữa `SERVO_DOWN_PULSE_US` và `SERVO_UP_PULSE_US`; không tự suy ra xung từ
-số độ. Xung phải hữu hạn trong 500–2500 µs theo dải DS-S006M, nhưng khoảng này
+số độ; cấu hình thử tương đương góc điện servo = 80° − góc tay. Xung phải hữu hạn trong 500–2500 µs theo dải DS-S006M, nhưng khoảng này
 chỉ là ràng buộc điện: nó không bảo đảm cơ cấu được phép đi hết khoảng đó.
 
 Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;

@@ -7,7 +7,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from vehicle_testing.config import CLAW_PWM_CHIP, SERVO_BCM_PIN
+from vehicle_testing.config import (
+    CLAW_PWM_CHIP, SERVO_BCM_PIN, SERVO_CALIBRATED,
+    SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US,
+)
 from vehicle_testing.gpio_pwm import PWM_SYSFS_ROOT, find_gpio_pwm_chip, validate_claw_pwm_chip
 from vehicle_testing.hand import validate_hand_calibration
 
@@ -38,9 +41,13 @@ def main(argv=None, *, sysfs_root: Path = PWM_SYSFS_ROOT) -> int:
     try:
         validate_hand_calibration()
     except ValueError as error:
-        print(f"CHUA HIEU CHINH: {error}")
+        print(f"CAU HINH XUNG KHONG HOP LE: {error}")
     else:
-        print("Cau hinh hai moc xung hop le; chua xac nhan vi tri co khi bang phep kiem tra nay.")
+        if SERVO_CALIBRATED:
+            print("Da khai bao hieu chinh; phep kiem tra nay khong do vi tri co khi.")
+        else:
+            print("CHE DO THU: nang/ha da cho phep chay; hai moc xung chua do tren xe.")
+        print(f"Ha -10 do: {SERVO_DOWN_PULSE_US:g} us; nang 80 do: {SERVO_UP_PULSE_US:g} us.")
     print("Chi doc metadata; khong export kenh, khong phat xung, khong di chuyen servo.")
     return 0
 

@@ -38,11 +38,12 @@ def validate_hand_seconds(seconds: float) -> None:
 
 
 def validate_hand_calibration() -> None:
+    """Validate pulse settings; unmeasured settings are allowed for user testing."""
     pulses = (SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US)
-    if not SERVO_CALIBRATED or any(
+    if any(
             not isinstance(pulse, (int, float)) or not math.isfinite(pulse)
             or not 500 <= pulse <= 2500 for pulse in pulses):
-        raise ValueError("Nang/ha tam khoa: can hieu chinh hai moc xung trong config.py truoc khi chay that.")
+        raise ValueError("Can cau hinh hai moc xung nang/ha huu han trong [500, 2500] us o config.py.")
     if SERVO_UP_PULSE_US == SERVO_DOWN_PULSE_US or SERVO_UP_ANGLE <= SERVO_DOWN_ANGLE:
         raise ValueError("Hai moc hieu chinh nang/ha phai khac nhau va dung thu tu goc.")
 
@@ -146,6 +147,9 @@ class KernelPWMLiftOutput:
         if pin != SERVO_BCM_PIN:
             raise ValueError("pwm-gpio chi dieu khien chan nang/ha trong config.py.")
         validate_hand_calibration()
+        if not SERVO_CALIBRATED:
+            logger.warning("Che do thu nang/ha: hai moc xung chua do tren xe (ha %g us, nang %g us).",
+                           SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US)
         chip = find_gpio_pwm_chip(pin)
         try:
             hardware = importlib.import_module("rpi_hardware_pwm")
@@ -281,7 +285,7 @@ class HandController:
         self._sleep = sleeper
         self._closed = False
         self._calibration_required = calibration_required
-        logger.info("Khi da hieu chinh, can dat tay o moc ha %g do truoc khi khoi dong; khong do duoc vi tri.",
+        logger.info("Can dat tay o vi tri ha %g do truoc khi khoi dong; day la vi tri gia dinh, khong do duoc.",
                     SERVO_START_ANGLE)
 
     def _move(self, angle: float, seconds: float, label: str) -> None:
@@ -292,7 +296,7 @@ class HandController:
         if self._calibration_required:
             validate_hand_calibration()
         if self._angle is None:
-            raise RuntimeError("Khong biet vi tri tay sau loi/ngat. Can dat tay o moc ha da hieu chinh va khoi dong lai.")
+            raise RuntimeError(f"Khong biet vi tri tay sau loi/ngat. Can dat tay o vi tri ha {SERVO_START_ANGLE:g} do va khoi dong lai.")
         if angle == self._angle:
             logger.info("%s: goc yeu cau da o %g do, bo qua chuyen dong.", label, angle)
             return

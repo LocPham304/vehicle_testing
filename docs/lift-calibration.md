@@ -1,30 +1,33 @@
-# Tay chạm điểm chặn: cần hiệu chỉnh hành trình trước khi thử tiếp
+# Cấu hình thử nâng/hạ −10°/80° và hiệu chỉnh xung
 
 Người dùng xác nhận nâng/hạ đến cuối hành trình trong khoảng 1 giây và phần
 thời gian còn lại giật mạnh; tay đã chạm hoặc ép vào khung/điểm chặn cơ khí.
 Lịch gửi góc trong phần mềm không cho biết vị trí thật. Tăng số giây không tránh
 được việc các góc tiếp theo tiếp tục ép vào điểm chặn.
 
-Ánh xạ thử cũ dùng 1500 µs ở mốc −10° và 500 µs ở mốc 80° chưa được hiệu chỉnh
-trên cơ cấu. Đã bỏ giả định này khỏi mặc định và khóa riêng nâng/hạ thật trước
-khi mở GPIO. Phần càng BCM 12, bánh xe và chế độ mô phỏng vẫn dùng được.
+Người dùng yêu cầu giữ hai mốc hạ −10°/nâng 80° để tự thử. Bản hiện tại cho phép
+chạy thật với xung thử 1500 µs ở mốc −10° và 500 µs ở mốc 80°, giữ chiều nâng
+bằng cách giảm xung như code cũ. Hai giá trị này chưa được đo trên cơ cấu;
+đổi sang kernel pwm-gpio không chứng minh đã tránh được điểm chặn.
 
-## Dữ liệu cần có để mở lại nâng/hạ
+## Cấu hình đang dùng
 
-- `SERVO_DOWN_PULSE_US`: xung ứng với vị trí thấp cho phép, còn khoảng hở với điểm chặn.
-- `SERVO_UP_PULSE_US`: xung ứng với vị trí cao cho phép, còn khoảng hở với điểm chặn.
-- `SERVO_CALIBRATED=True`: chỉ bật sau khi hai vị trí được kiểm tra thực tế.
+- `SERVO_DOWN_PULSE_US=1500.0`: xung thử cho mốc hạ −10°.
+- `SERVO_UP_PULSE_US=500.0`: xung thử cho mốc nâng 80°.
+- `SERVO_CALIBRATED=False`: thông báo chưa đo xung, không chặn thử.
 
-Vị trí tay trước khi khởi động phải trùng mốc hạ đã hiệu chỉnh ứng với
-`SERVO_DOWN_PULSE_US`, không phải ép tay xuống hết điểm chặn cơ khí. Bộ điều khiển
+Trước khi khởi động, chuẩn bị tay ở mốc hạ −10° như người dùng đã xác nhận.
+Không tự ép tay xuống hết điểm chặn cơ khí. Bộ điều khiển
 không có phản hồi góc và lần phát xung đầu vẫn sẽ yêu cầu mốc khởi đầu này.
 
-Không tự lấy 500/1500 µs hay một cặp số mới để thử toàn hành trình. 500–2500 µs
-là dải điện của servo DS-S006M, không phải hành trình an toàn của cơ cấu lắp ráp.
+1500/500 µs là cấu hình giả định cho lần thử được người dùng yêu cầu.
+500–2500 µs là dải điện của servo DS-S006M, không phải hành trình an toàn của cơ cấu lắp ráp.
 Các số −10° và 80° là tên mốc của tay, không cung cấp đủ thông tin để tự suy ra xung.
 Chương trình chưa có cảm biến góc, công tắc giới hạn hoặc đo dòng để tự nhận ra
-tay đã chạm chặn. Cần người có kinh nghiệm cơ cấu/servo hỗ trợ hiệu chỉnh; không
-cần yêu cầu người dùng tự tháo dây khi chưa biết cổng và chiều cắm.
+tay đã chạm chặn. Nếu gặp điểm chặn, dùng Ctrl+C để dừng và hiệu chỉnh lại hai
+mốc theo vị trí thực tế còn khoảng hở. Không cần đổi dây BCM 18/BCM 12.
+Xung thiếu, không hữu hạn, bằng nhau hoặc ngoài dải điện vẫn bị từ chối trước
+khi mở đầu ra; lỗi/ngắt giữa chuyển động vẫn làm mất mốc vị trí và cần khởi động lại.
 
 `SERVO_HOLD_POSITION=True` đang giữ lực đỡ tay. Không đổi thành False để che rung:
 ngắt xung có thể làm tay hạ theo tải và không sửa được việc đi quá hành trình.
@@ -71,11 +74,11 @@ kể cả sau khi thoát `main.py`. Không có phương án tự quay về đầ
 Thư viện `rpi-hardware-pwm` có sẵn trong requirements dùng được qua sysfs của
 provider này; không cần thêm daemon hoặc chuyển dây.
 
-Sau khi người có kinh nghiệm xác nhận được hai xung an toàn, điền
-`SERVO_DOWN_PULSE_US`, `SERVO_UP_PULSE_US` và bật `SERVO_CALIBRATED=True`.
-Không sao chép xung mẫu từ unit test: đó là dữ liệu giả, không đo trên xe.
-Khi tay ở đúng mốc hạ đã hiệu chỉnh, mới chạy `sudo .venv/bin/python main.py`
-và thử riêng `nang 4`, `chay`; quan sát trước khi thử `ha 4`, `chay`.
+Khi tay ở mốc hạ, chạy `sudo .venv/bin/python main.py` và thử riêng
+`nang 4`, `chay`; quan sát trước khi thử `ha 4`, `chay`.
+Sau khi đo lại hai xung theo cơ cấu, có thể thay `SERVO_DOWN_PULSE_US`,
+`SERVO_UP_PULSE_US` và đặt `SERVO_CALIBRATED=True` để ghi nhận đã hiệu chỉnh.
+Không sao chép xung mẫu từ unit test như một kết quả đo trên xe.
 Chương trình chuyển yêu cầu theo bước tối đa 20 ms, nhẹ ở hai đầu, không
 khởi động lại PWM giữa các bước. Vẫn giữ lực nâng sau lệnh theo cấu hình cũ.
 

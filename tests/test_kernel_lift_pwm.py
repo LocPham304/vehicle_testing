@@ -63,6 +63,7 @@ class GPIOPWMDiscoveryTests(unittest.TestCase):
 
     def test_read_only_checker_prints_provider_without_opening_output(self):
         self.chip(3)
+        self.chip(1, compatible=b"brcm,bcm2835-pwm\0")
         checker = importlib.import_module("vehicle_testing.check_lift_pwm")
         result = io.StringIO()
         with patch("vehicle_testing.hand.KernelPWMLiftOutput") as output, redirect_stdout(result):
@@ -70,6 +71,8 @@ class GPIOPWMDiscoveryTests(unittest.TestCase):
         output.assert_not_called()
         self.assertIn("pwmchip3", result.getvalue())
         self.assertIn("BCM 18", result.getvalue())
+        self.assertIn("CHE DO THU", result.getvalue())
+        self.assertNotIn("tam khoa", result.getvalue())
 
 
 class KernelLiftOutputTests(unittest.TestCase):
@@ -105,9 +108,17 @@ class KernelLiftOutputTests(unittest.TestCase):
         output.set_angle(80)
         self.assertEqual(self.pwm.start.call_count, 2)
 
-    def test_uncalibrated_output_refuses_even_before_discovery(self):
+    def test_unmeasured_profile_opens_kernel_output_with_an_explicit_warning(self):
         with patch.object(self.module, "SERVO_CALIBRATED", False):
-            with self.assertRaisesRegex(ValueError, "hieu chinh"):
+            with self.assertLogs(self.module.__name__, level="WARNING") as logs:
+                output = self.output()
+        self.assertIn("chua do", " ".join(logs.output))
+        output.set_angle(-10)
+        self.pwm.start.assert_called_once()
+
+    def test_missing_pulses_refuse_even_before_discovery(self):
+        with patch.object(self.module, "SERVO_DOWN_PULSE_US", None):
+            with self.assertRaises(ValueError):
                 self.output()
         self.find.assert_not_called()
         self.hardware.HardwarePWM.assert_not_called()
@@ -123,7 +134,7 @@ class KernelLiftOutputTests(unittest.TestCase):
         for angle in (-11, 81, float("nan")):
             with self.assertRaises(ValueError):
                 output.set_angle(angle)
-        with patch.object(self.module, "SERVO_CALIBRATED", False):
+        with patch.object(self.module, "SERVO_DOWN_PULSE_US", None):
             with self.assertRaises(ValueError):
                 output.set_angle(0)
         self.pwm.start.assert_not_called()

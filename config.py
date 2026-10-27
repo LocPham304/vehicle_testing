@@ -29,14 +29,15 @@ SERVO_MIN_ANGLE = -10.0
 SERVO_MAX_ANGLE = 80.0
 SERVO_UP_ANGLE = 80.0
 SERVO_DOWN_ANGLE = -10.0
-# Startup must match the measured safe lower endpoint, not the mechanical stop.
+# User will prepare the arm at the lowered position before starting.
 SERVO_START_ANGLE = SERVO_DOWN_ANGLE
-# The mounted lift hit its mechanical stops with the assumed 500..1500 us range.
-# Do not enable real lift movement until both pulse endpoints have been measured
-# within the free mechanical travel, with clearance from the stops.
+# User-authorized test profile: preserve the previous decreasing-pulse lift
+# direction (electrical angle = 80 - logical angle). These endpoints have NOT
+# been measured on the mounted mechanism; it previously contacted its stops.
+# This flag reports measurement status only; it no longer blocks testing.
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = None
-SERVO_UP_PULSE_US = None
+SERVO_DOWN_PULSE_US = 1500.0  # Logical -10 -> electrical 90 degrees.
+SERVO_UP_PULSE_US = 500.0     # Logical 80 -> electrical 0 degrees.
 SERVO_MOVE_SECONDS = 2.0
 SERVO_MIN_MOVE_SECONDS = 2.0
 SERVO_UPDATE_INTERVAL_SECONDS = 0.02

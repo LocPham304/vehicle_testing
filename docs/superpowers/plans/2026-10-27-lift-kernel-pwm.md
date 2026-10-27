@@ -1,5 +1,11 @@
 # Lift kernel GPIO PWM Implementation Plan
 
+> Follow-up user instruction: allow testing fixed -10/80 endpoints without
+> waiting for measured pulses. The original calibration interlock below is a
+> historical implementation record, superseded by that explicit instruction.
+> Current config uses DOWN=1500 us, UP=500 us, CALIBRATED=False as measurement
+> metadata only. Invalid pulse values are still rejected before opening PWM.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Keep BCM 18 wiring and the seconds-only lift commands while replacing RPi.GPIO edge generation with the supported kernel pwm-gpio driver.
@@ -34,3 +40,12 @@
 - Ruling: also validate the configured claw provider before opening PWM — adding a driver can renumber chips and route the claw to BCM 18 otherwise. A missing/mismatched device-tree descriptor will now stop the claw rather than trying the configured chip blindly.
 - Actual endpoint pulses remain unknown; calibration stays False/None. No real motion, boot edits, or source commits performed.
 - Independent whole-change review: no actionable findings; reviewer independently passed all 143 tests. Physical timing, clearance, loaded movement and cross-servo operation remain unverified. Exact installed rpi-hardware-pwm 0.3.1 source was unavailable; upstream API and the already-working claw use the same constructor/start/stop/duty calls.
+
+## Follow-up test profile
+
+- Explicit user instruction: code the requested endpoints and let the user test the mechanism.
+- Kept kernel PWM, gradual timing, hold behavior, pin assignment and provider isolation.
+- Added a warning for unmeasured pulses; None/invalid/nonfinite/equal/out-of-range pulses still fail before opening PWM.
+- Observed the unmeasured profile tests fail under the old interlock, then pass after the change.
+- Full suite: 145 tests passed. No physical movement, boot edits, commits or pushes.
+- Independent review: no actionable regressions; reviewer also passed all 145 tests. Updated the interrupted-motion message to refer to the assumed lower position rather than requiring measured calibration.

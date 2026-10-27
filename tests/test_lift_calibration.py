@@ -1,4 +1,4 @@
-"""Reject unmeasured lift pulse endpoints before any GPIO output is opened."""
+"""Allow the requested test profile, but reject invalid lift pulse settings."""
 
 import importlib
 import io
@@ -14,12 +14,25 @@ class LiftCalibrationTests(unittest.TestCase):
     def setUp(self):
         self.module = importlib.import_module("vehicle_testing.hand")
 
-    def test_uncalibrated_lift_starts_without_gpio_but_refuses_both_moves(self):
+    def test_default_unmeasured_profile_can_raise_and_lower_for_testing(self):
+        output = Mock()
+        waits = []
+        hand = self.module.HandController(lambda: output, sleeper=waits.append)
+        self.assertFalse(self.module.SERVO_CALIBRATED)
+        hand.hand_up(4)
+        self.assertEqual(output.set_angle.call_args.args, (80,))
+        self.assertAlmostEqual(sum(waits), 4.1)
+        waits.clear()
+        hand.hand_down(3)
+        self.assertEqual(output.set_angle.call_args.args, (-10,))
+        self.assertAlmostEqual(sum(waits), 3.1)
+
+    def test_missing_pulses_refuse_both_moves_before_gpio(self):
         factory = Mock()
-        with patch.object(self.module, "SERVO_CALIBRATED", False, create=True):
+        with patch.multiple(self.module, SERVO_DOWN_PULSE_US=None, SERVO_UP_PULSE_US=None):
             hand = self.module.HandController(factory, sleeper=lambda _: None)
             for move in (hand.hand_up, hand.hand_down):
-                with self.assertRaisesRegex(ValueError, "hieu chinh"):
+                with self.assertRaises(ValueError):
                     move(4)
         factory.assert_not_called()
 
@@ -44,16 +57,18 @@ class LiftCalibrationTests(unittest.TestCase):
 
     def test_dry_run_can_preview_angles_without_calibrating_physical_outputs(self):
         output = Mock()
-        with patch.object(self.module, "SERVO_CALIBRATED", False, create=True):
+        with patch.multiple(self.module, SERVO_CALIBRATED=False, SERVO_DOWN_PULSE_US=None,
+                            SERVO_UP_PULSE_US=None):
             hand = self.module.HandController(lambda: output, sleeper=lambda _: None,
                                                calibration_required=False)
             hand.hand_up(4)
         self.assertEqual(output.set_angle.call_args.args, (80,))
 
-    def test_claw_commands_remain_available_with_uncalibrated_lift(self):
+    def test_claw_commands_remain_available_with_missing_lift_pulses(self):
         factory = Mock()
         claw = Mock()
-        with patch.object(self.module, "SERVO_CALIBRATED", False):
+        with patch.multiple(self.module, SERVO_CALIBRATED=False, SERVO_DOWN_PULSE_US=None,
+                            SERVO_UP_PULSE_US=None):
             hand = self.module.HandController(factory, sleeper=lambda _: None)
             with patch("builtins.input", side_effect=["mo_cang 4", "chay", "thoat"]), \
                     redirect_stdout(io.StringIO()):

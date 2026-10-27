@@ -68,9 +68,9 @@ HELP = f"""Lenh:
 Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
 Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
-Nang/ha dung GPIO BCM {SERVO_BCM_PIN}; vi tri khoi dau phai trung moc ha da hieu chinh ({SERVO_START_ANGLE:g} do).
+Nang/ha dung GPIO BCM {SERVO_BCM_PIN}; can dat tay o vi tri ha {SERVO_START_ANGLE:g} do truoc khi khoi dong.
 Nang/ha mac dinh {SERVO_MOVE_SECONDS:g} giay, toi thieu {SERVO_MIN_MOVE_SECONDS:g} giay; dung kernel pwm-gpio BCM 18.
-Nang/ha {'da khai bao hieu chinh' if SERVO_CALIBRATED else 'tam khoa khi chay that: chua hieu chinh hai moc xung'}.
+Nang/ha {'da khai bao hieu chinh' if SERVO_CALIBRATED else 'che do thu: da cho phep chay, hai moc xung chua do tren xe'}.
 Cang dung GPIO BCM {CLAW_BCM_PIN}; can de cang khep {CLAW_START_ANGLE:g} do truoc khi khoi dong.
 Cang dung PWM phan cung BCM 12; can cau hinh overlay theo README truoc khi chay that.
 Mo/dong cang chia buoc goc trong {CLAW_MOVE_SECONDS:g} giay mac dinh, toi thieu {CLAW_MIN_MOVE_SECONDS:g} giay.
