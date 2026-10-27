@@ -21,19 +21,22 @@ TURN_RIGHT_SECONDS_PER_DEGREE = 0.0089
 # Confirmed by the user's probe: BCM 18 lifts the arm; BCM 12 opens the claw.
 # These GPIO outputs are independent of the motor PCA9685 frequency.
 SERVO_BCM_PIN = 18
+# Kernel pwm-gpio provider is discovered from device tree, not a fixed chip index.
+# Requires dtoverlay=pwm-gpio,gpio=18; never route hardware PWM0 to this pin.
 CLAW_BCM_PIN = 12
 SERVO_PWM_FREQUENCY_HZ = 50
 SERVO_MIN_ANGLE = -10.0
 SERVO_MAX_ANGLE = 80.0
 SERVO_UP_ANGLE = 80.0
 SERVO_DOWN_ANGLE = -10.0
-# User prepares the lift at its lowest position before starting the program.
+# Startup must match the measured safe lower endpoint, not the mechanical stop.
 SERVO_START_ANGLE = SERVO_DOWN_ANGLE
-# Joint angle increases when raising; keep the previous decreasing-pulse direction.
-# Electrical angle = 80 - joint angle, so -10..80 maps to electrical 90..0.
-# This is an initial mapping, not a measurement of the mounted mechanism.
-SERVO_ANGLE_OFFSET_DEGREES = 80.0
-SERVO_ANGLE_DIRECTION = -1.0
+# The mounted lift hit its mechanical stops with the assumed 500..1500 us range.
+# Do not enable real lift movement until both pulse endpoints have been measured
+# within the free mechanical travel, with clearance from the stops.
+SERVO_CALIBRATED = False
+SERVO_DOWN_PULSE_US = None
+SERVO_UP_PULSE_US = None
 SERVO_MOVE_SECONDS = 2.0
 SERVO_MIN_MOVE_SECONDS = 2.0
 SERVO_UPDATE_INTERVAL_SECONDS = 0.02

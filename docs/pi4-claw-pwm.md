@@ -24,6 +24,12 @@ BCM 12 xuất PWM0, chức năng Alt0 (`func=4`). Không để một overlay PWM
 cùng kênh ra BCM 18 vì BCM 18 đang nâng/hạ. Audio analog dùng chung bộ PWM nên
 bị tắt; cấu hình này không thay đổi PCA9685 điều khiển bánh xe.
 
+Nâng/hạ BCM 18 hiện dùng overlay riêng `dtoverlay=pwm-gpio,gpio=18` và bộ định
+thời kernel, giữ nguyên dây. Đây là driver khác, không lấy PWM0 của càng.
+Xem [thiết lập và hiệu chỉnh nâng/hạ](lift-calibration.md). Sau khi thêm overlay,
+chạy `check_lift_pwm.py` để kiểm tra số chip; đầu ra càng kiểm tra loại driver
+trước khi mở `CLAW_PWM_CHIP`, tránh chọn nhầm chip GPIO khi kernel đổi số.
+
 Nếu file không tồn tại hoặc cấu hình boot của máy ở đường dẫn khác, xác định
 file đang được dùng trước khi chỉnh. Sau khi lưu, khởi động lại Pi:
 

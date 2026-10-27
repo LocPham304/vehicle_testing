@@ -13,7 +13,9 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | --- | --- |
 | `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
-| `hand.py` | Nâng/hạ BCM 18 tới −10°/80° theo thời gian; càng BCM 12 dùng PWM phần cứng |
+| `hand.py` | Nâng/hạ BCM 18 qua kernel pwm-gpio; càng BCM 12 dùng PWM phần cứng |
+| `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
+| `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -128,11 +130,36 @@ cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
 
 ## Tay nâng/hạ qua GPIO BCM 18
 
-Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng `RPi.GPIO` ở **50 Hz**.
+Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng driver
+**`pwm-gpio` của kernel ở 50 Hz**, qua API sysfs của `rpi-hardware-pwm`.
 Chân này đã được người dùng xác nhận bằng phép thử `probe_servo.py --pin 18`.
 Tần số này độc lập với PWM 1000 Hz của PCA9685 điều khiển bánh xe.
 Không chạy đồng thời với chương trình khác đang dùng GPIO 18 hoặc GPIO 12.
-Thư viện GPIO có trong `requirements.txt` cho Linux; `--dry-run` không nhập hay mở GPIO.
+Giữ nguyên dây; không còn dùng `RPi.GPIO` để phát xung nâng/hạ trong `main.py`.
+Đây vẫn là PWM phần mềm, do bộ định thời kernel tạo xung; không phải PWM phần cứng.
+`--dry-run` không mở GPIO hoặc sysfs PWM.
+
+Giữ hai dòng đang dùng cho càng và thêm dòng thứ ba dưới `[all]` trong
+`/boot/firmware/config.txt`:
+
+```ini
+dtparam=audio=off
+dtoverlay=pwm,pin=12,func=4
+dtoverlay=pwm-gpio,gpio=18
+```
+
+Khởi động lại Pi. Sau khi cập nhật source, từ thư mục `~/vehicle_testing`, chạy:
+
+```sh
+.venv/bin/python check_lift_pwm.py
+```
+
+Lệnh chỉ đọc, không làm servo chuyển động. Nó tìm đúng provider `pwm-gpio`
+của BCM 18, không mặc định là `pwmchip1`. Nếu số chip của càng đổi, kiểm tra
+driver phần cứng được báo rồi sửa `CLAW_PWM_CHIP` trong `config.py`;
+đầu ra càng sẽ từ chối mở nhầm chip `pwm-gpio`.
+Sau khi nạp overlay này, không chạy `probe_servo.py --pin 18` hoặc chương trình
+`RPi.GPIO` khác trên BCM 18, kể cả khi `main.py` đã thoát: kernel đang sở hữu chân.
 
 ```text
 nang 4
@@ -145,25 +172,40 @@ Bỏ số giây thì mặc định 2 giây (`SERVO_MOVE_SECONDS`); thời gian p
 ít nhất 2 giây (`SERVO_MIN_MOVE_SECONDS`). Không nhận thêm góc hoặc PWM.
 Lệnh đặt góc tay cũ đã được bỏ khỏi CLI.
 
-**Trước khi khởi động, để tay hạ thấp nhất (−10°)** như người dùng đã xác nhận.
-Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;
+**Nâng/hạ thật hiện bị khóa chờ hiệu chỉnh xung**. Người dùng đã xác nhận tay
+chạm/ép vào điểm chặn, tới đích trong khoảng 1 giây rồi giật trong thời gian còn
+lại. Dải xung giả định cũ không còn được dùng làm mặc định. Trong `config.py`:
+
+```python
+SERVO_CALIBRATED = False
+SERVO_DOWN_PULSE_US = None
+SERVO_UP_PULSE_US = None
+```
+
+Chỉ điền hai xung đã được xác nhận nằm trong hành trình tự do, có khoảng hở với
+điểm chặn, rồi mới bật cờ hiệu chỉnh. Không lấy hai giới hạn từ bảng thông số servo
+làm giới hạn của cơ cấu đang lắp. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
+Khóa được kiểm tra trước khi mở GPIO; `--dry-run`, lệnh càng và bánh vẫn dùng được.
+
+**Sau khi hiệu chỉnh, trước khi khởi động, để tay đúng vị trí hạ ứng với
+`SERVO_DOWN_PULSE_US` (mốc −10°)**, còn khoảng hở với điểm chặn, không ép xuống
+đáy hành trình cơ khí. Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;
 khởi tạo không tự phát xung hoặc đưa tay về gốc. Các lệnh chuyển góc theo từng
 bước tối đa 20 ms, tăng/giảm tốc nhẹ ở hai đầu, sau đó chờ thêm 0,1 giây.
 `nang 4` chuyển yêu cầu −10° → 80° trong 4 giây; `ha 4` đi ngược lại.
 Gửi lại cùng một đích đã yêu cầu sẽ bỏ qua. Lỗi/ngắt giữa chừng làm mất mốc và
-chặn các lệnh tay tiếp theo; cần chuẩn bị lại tay ở vị trí thấp và khởi động lại.
+chặn các lệnh tay tiếp theo; cần chuẩn bị lại đúng mốc hạ đã hiệu chỉnh và khởi động lại.
 
-Các số −10°/80° là mốc góc của cơ cấu. Ánh xạ điện ban đầu là
-`góc servo = SERVO_ANGLE_OFFSET_DEGREES + SERVO_ANGLE_DIRECTION × góc tay`,
-mặc định **80 − góc tay** để giữ chiều nâng giảm xung, hạ tăng xung của code cũ.
-Sau đó đổi theo thang servo 0–180° tương ứng 500–2500 µs. Vì vậy −10° → 1500 µs,
-80° → 500 µs; không gửi góc âm trực tiếp thành xung dưới 500 µs. Hai mốc vật lý
-và ánh xạ này chưa được hiệu chỉnh trên cơ cấu thật; cần kiểm tra chiều và hành trình.
+Các số −10°/80° là mốc góc quy ước của cơ cấu. Khi đã hiệu chỉnh, chương trình
+nội suy giữa `SERVO_DOWN_PULSE_US` và `SERVO_UP_PULSE_US`; không tự suy ra xung từ
+số độ. Xung phải hữu hạn trong 500–2500 µs theo dải DS-S006M, nhưng khoảng này
+chỉ là ràng buộc điện: nó không bảo đảm cơ cấu được phép đi hết khoảng đó.
 
 Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;
-chương trình gửi lệnh dừng bánh trước khi điều khiển tay. BCM 18 vẫn dùng PWM phần
-mềm theo yêu cầu giữ dây, nên chia bước chỉ xử lý việc nhảy góc đích, chưa bảo đảm
-hết rung như PWM phần cứng của càng. Không đổi overlay để xuất PWM0 ra BCM 18,
+chương trình gửi lệnh dừng bánh trước khi điều khiển tay. BCM 18 dùng bộ định thời
+kernel để tạo xung thay cho luồng Python; chưa xác nhận độ rung trên cơ cấu thật.
+Giữ PWM chạy giữa các bước, chỉ đổi duty, bỏ qua xung nguyên µs trùng nhau.
+Không đổi overlay để xuất PWM0 phần cứng ra BCM 18,
 vì kênh PWM0 đang dùng cho càng BCM 12.
 
 PWM servo nâng/hạ mặc định được giữ (`SERVO_HOLD_POSITION=True`), kể cả khi chạy bánh, `ngung` hoặc `dung`,
@@ -222,7 +264,7 @@ Python chỉ thay đổi độ rộng xung khi chuyển góc. Không tắt/bật
 xác nhận nguyên nhân trên xe là xung, nguồn điện hay tải cơ khí.
 Các bước góc vẫn được giữ; góc trùng cùng độ rộng xung nguyên µs không gửi lại.
 Thang xung cũ giữ nguyên: 0° → 500 µs; 100° → khoảng 1611 µs.
-Nâng/hạ vẫn dùng RPi.GPIO riêng BCM 18.
+Nâng/hạ dùng riêng driver `pwm-gpio` trên BCM 18 như phần thiết lập ở trên.
 
 Thiết lập một lần theo [hướng dẫn Pi 4 / Trixie](docs/pi4-claw-pwm.md).
 Trong `/boot/firmware/config.txt`, dưới `[all]`, cấu hình riêng BCM 12:

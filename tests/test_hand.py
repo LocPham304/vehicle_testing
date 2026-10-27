@@ -29,9 +29,18 @@ class RecordingServo:
         self.closed = True
 
 
+def mock_lift_calibration(testcase, module):
+    """Synthetic test values, not calibration settings for the physical robot."""
+    calibration = patch.multiple(module, SERVO_CALIBRATED=True,
+                                  SERVO_DOWN_PULSE_US=1500.0, SERVO_UP_PULSE_US=500.0)
+    calibration.start()
+    testcase.addCleanup(calibration.stop)
+
+
 class HandControllerTests(unittest.TestCase):
     def setUp(self):
         self.module = importlib.import_module("vehicle_testing.hand")
+        mock_lift_calibration(self, self.module)
         self.output = RecordingServo()
         self.factory = Mock(return_value=self.output)
         self.hand = self.module.HandController(self.factory, sleeper=lambda _: None)
@@ -81,6 +90,7 @@ class HandControllerTests(unittest.TestCase):
 class GPIOOutputTests(unittest.TestCase):
     def setUp(self):
         self.module = importlib.import_module("vehicle_testing.hand")
+        mock_lift_calibration(self, self.module)
         self.gpio = Mock(BCM=11, OUT=0)
         self.pwm = self.gpio.PWM.return_value
 
@@ -128,6 +138,7 @@ class GPIOOutputTests(unittest.TestCase):
 class HandSessionTests(unittest.TestCase):
     def setUp(self):
         module = importlib.import_module("vehicle_testing.hand")
+        mock_lift_calibration(self, module)
         self.motor = Mock()
         self.controller = MotorController(self.motor, sleeper=lambda _: None)
         self.output = RecordingServo()

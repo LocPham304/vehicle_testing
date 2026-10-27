@@ -5,11 +5,13 @@ import unittest
 from unittest.mock import Mock, patch
 
 from vehicle_testing.main import HELP, parse_command
+from vehicle_testing.tests.test_hand import mock_lift_calibration
 
 
 class TimedHandTests(unittest.TestCase):
     def setUp(self):
         self.module = importlib.import_module("vehicle_testing.hand")
+        mock_lift_calibration(self, self.module)
 
     def test_commands_only_accept_seconds_and_remove_tay_goc(self):
         self.assertEqual(parse_command("nang"), ("hand_up", 2, 0))
@@ -60,7 +62,7 @@ class TimedHandTests(unittest.TestCase):
             output.set_angle(angle)
             self.assertAlmostEqual(pwm.ChangeDutyCycle.call_args.args[0], duty)
         pwm.ChangeDutyCycle.reset_mock()
-        with patch.object(self.module, "SERVO_ANGLE_OFFSET_DEGREES", 0):
+        with patch.object(self.module, "SERVO_DOWN_PULSE_US", None):
             with self.assertRaises(ValueError):
                 output.set_angle(80)
         pwm.ChangeDutyCycle.assert_not_called()

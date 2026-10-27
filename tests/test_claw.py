@@ -8,12 +8,13 @@ from unittest.mock import Mock, patch
 
 from vehicle_testing.main import HELP, parse_command, run_session
 from vehicle_testing.controller import MotorController
-from vehicle_testing.tests.test_hand import RecordingServo
+from vehicle_testing.tests.test_hand import RecordingServo, mock_lift_calibration
 
 
 class ClawTests(unittest.TestCase):
     def setUp(self):
         self.module = importlib.import_module("vehicle_testing.hand")
+        mock_lift_calibration(self, self.module)
         self.output = RecordingServo()
         self.waits = []
         self.factory = Mock(return_value=self.output)
@@ -191,25 +192,32 @@ class ClawTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
             claw.grip()
 
-    def test_main_uses_hardware_pwm_for_claw_only_and_closes_both(self):
+    def test_main_uses_separate_kernel_pwm_providers_and_closes_both(self):
         main = importlib.import_module("vehicle_testing.main")
         gpio = Mock(BCM=11, OUT=0)
         hardware = Mock()
+        lift_pwm, claw_pwm = Mock(), Mock()
+        hardware.HardwarePWM.side_effect = lambda **kwargs: lift_pwm if kwargs["chip"] == 3 else claw_pwm
         real_lift, real_claw = main.HandController, main.ClawController
         with patch.dict("sys.modules", {"RPi.GPIO": gpio, "rpi_hardware_pwm": hardware}), \
                 patch.object(main, "PCA9685Output"), \
-                patch.object(main, "HandController", side_effect=lambda factory: real_lift(factory, sleeper=lambda _: None)), \
+                patch.object(self.module, "find_gpio_pwm_chip", return_value=3), \
+                patch.object(self.module, "validate_claw_pwm_chip"), \
+                patch.object(main, "HandController", side_effect=lambda factory, **kwargs: real_lift(factory, sleeper=lambda _: None, **kwargs)), \
                 patch.object(main, "ClawController", side_effect=lambda factory: real_claw(factory, sleeper=lambda _: None)), \
                 patch("builtins.input", side_effect=["nang 2", "mo_cang", "chay", "thoat"]), \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(main.main([]), 0)
-        gpio.PWM.assert_called_once_with(18, 50)
-        gpio.cleanup.assert_called_once_with(18)
-        hardware.HardwarePWM.assert_called_once_with(pwm_channel=0, hz=50, chip=0)
-        pwm = hardware.HardwarePWM.return_value
-        self.assertTrue(pwm.start.called)
-        self.assertEqual(pwm.change_duty_cycle.call_args.args, (2.5,))
-        self.assertTrue(pwm.stop.called)
+        gpio.PWM.assert_not_called()
+        gpio.cleanup.assert_not_called()
+        self.assertEqual(hardware.HardwarePWM.call_count, 2)
+        hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=3)
+        hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=0)
+        self.assertTrue(lift_pwm.start.called)
+        self.assertTrue(claw_pwm.start.called)
+        self.assertEqual(claw_pwm.change_duty_cycle.call_args.args, (2.5,))
+        self.assertTrue(lift_pwm.stop.called)
+        self.assertTrue(claw_pwm.stop.called)
 
     def test_cleanup_attempts_claw_when_lift_cleanup_fails(self):
         main = importlib.import_module("vehicle_testing.main")

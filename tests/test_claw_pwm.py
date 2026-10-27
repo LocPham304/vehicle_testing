@@ -10,6 +10,9 @@ class HardwareClawTests(unittest.TestCase):
         self.module = importlib.import_module("vehicle_testing.hand")
         self.hardware = Mock()
         self.pwm = self.hardware.HardwarePWM.return_value
+        provider = patch.object(self.module, "validate_claw_pwm_chip")
+        self.provider = provider.start()
+        self.addCleanup(provider.stop)
 
     def output(self):
         with patch.dict("sys.modules", {"rpi_hardware_pwm": self.hardware}):
@@ -76,6 +79,18 @@ class HardwareClawTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.module.HardwarePWMClawOutput(pin=18)
         importer.assert_not_called()
+
+    def test_gpio_provider_rejected_before_any_pwm_write(self):
+        self.provider.side_effect = RuntimeError("Wrong PWM provider")
+        with self.assertRaisesRegex(RuntimeError, "Wrong PWM provider"):
+            self.output()
+        self.hardware.HardwarePWM.assert_not_called()
+
+    def test_wrong_channel_rejected_before_any_pwm_write(self):
+        with patch.object(self.module, "CLAW_PWM_CHANNEL", 1):
+            with self.assertRaises(ValueError):
+                self.output()
+        self.hardware.HardwarePWM.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -15,10 +15,10 @@ from vehicle_testing.config import (
     CLAW_MOVE_SECONDS, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE, CLAW_START_ANGLE,
     CLAW_MIN_MOVE_SECONDS, CLAW_SETTLE_SECONDS,
     SERVO_MOVE_SECONDS, SERVO_UP_ANGLE, SERVO_DOWN_ANGLE, SERVO_START_ANGLE,
-    SERVO_MIN_MOVE_SECONDS,
+    SERVO_MIN_MOVE_SECONDS, SERVO_CALIBRATED,
 )
 from vehicle_testing.hand import (
-    DryRunServoOutput, GPIOServoOutput, HardwarePWMClawOutput, HandController, ClawController,
+    DryRunServoOutput, KernelPWMLiftOutput, HardwarePWMClawOutput, HandController, ClawController,
     validate_hand_seconds, validate_claw_seconds,
 )
 from vehicle_testing.controller import (
@@ -68,8 +68,9 @@ HELP = f"""Lenh:
 Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
 Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
 Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
-Nang/ha dung GPIO BCM {SERVO_BCM_PIN}; can de tay ha thap {SERVO_START_ANGLE:g} do truoc khi khoi dong.
-Nang/ha mac dinh {SERVO_MOVE_SECONDS:g} giay, toi thieu {SERVO_MIN_MOVE_SECONDS:g} giay; van dung PWM phan mem.
+Nang/ha dung GPIO BCM {SERVO_BCM_PIN}; vi tri khoi dau phai trung moc ha da hieu chinh ({SERVO_START_ANGLE:g} do).
+Nang/ha mac dinh {SERVO_MOVE_SECONDS:g} giay, toi thieu {SERVO_MIN_MOVE_SECONDS:g} giay; dung kernel pwm-gpio BCM 18.
+Nang/ha {'da khai bao hieu chinh' if SERVO_CALIBRATED else 'tam khoa khi chay that: chua hieu chinh hai moc xung'}.
 Cang dung GPIO BCM {CLAW_BCM_PIN}; can de cang khep {CLAW_START_ANGLE:g} do truoc khi khoi dong.
 Cang dung PWM phan cung BCM 12; can cau hinh overlay theo README truoc khi chay that.
 Mo/dong cang chia buoc goc trong {CLAW_MOVE_SECONDS:g} giay mac dinh, toi thieu {CLAW_MIN_MOVE_SECONDS:g} giay.
@@ -244,7 +245,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("MO PHONG - khong dieu khien phan cung" if args.dry_run else "CHE DO PHAN CUNG")
         output = DryRunOutput() if args.dry_run else PCA9685Output()
         controller = MotorController(output)
-        hand = HandController(DryRunServoOutput if args.dry_run else GPIOServoOutput)
+        hand = HandController(DryRunServoOutput if args.dry_run else KernelPWMLiftOutput,
+                              calibration_required=not args.dry_run)
         claw_output = DryRunServoOutput if args.dry_run else HardwarePWMClawOutput
         claw = ClawController(lambda: claw_output(pin=CLAW_BCM_PIN))
         controller.stop()

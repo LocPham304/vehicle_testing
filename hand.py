@@ -9,10 +9,13 @@ import math
 import time
 from typing import Callable, Protocol
 
+from vehicle_testing.gpio_pwm import find_gpio_pwm_chip, validate_claw_pwm_chip
+
 from vehicle_testing.config import (
     SERVO_BCM_PIN, SERVO_PWM_FREQUENCY_HZ, SERVO_MIN_ANGLE,
     SERVO_MAX_ANGLE, SERVO_UP_ANGLE, SERVO_DOWN_ANGLE, SERVO_START_ANGLE,
-    SERVO_ANGLE_OFFSET_DEGREES, SERVO_ANGLE_DIRECTION, SERVO_MOVE_SECONDS, SERVO_MIN_MOVE_SECONDS,
+    SERVO_CALIBRATED, SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US,
+    SERVO_MOVE_SECONDS, SERVO_MIN_MOVE_SECONDS,
     SERVO_UPDATE_INTERVAL_SECONDS, SERVO_SETTLE_SECONDS, SERVO_HOLD_POSITION,
     CLAW_BCM_PIN, CLAW_MIN_ANGLE, CLAW_MAX_ANGLE, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
     CLAW_HOLD_POSITION, CLAW_MOVE_SECONDS,
@@ -34,12 +37,23 @@ def validate_hand_seconds(seconds: float) -> None:
         raise ValueError(f"Thoi gian nang/ha phai huu han va it nhat {SERVO_MIN_MOVE_SECONDS:g} giay.")
 
 
+def validate_hand_calibration() -> None:
+    pulses = (SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US)
+    if not SERVO_CALIBRATED or any(
+            not isinstance(pulse, (int, float)) or not math.isfinite(pulse)
+            or not 500 <= pulse <= 2500 for pulse in pulses):
+        raise ValueError("Nang/ha tam khoa: can hieu chinh hai moc xung trong config.py truoc khi chay that.")
+    if SERVO_UP_PULSE_US == SERVO_DOWN_PULSE_US or SERVO_UP_ANGLE <= SERVO_DOWN_ANGLE:
+        raise ValueError("Hai moc hieu chinh nang/ha phai khac nhau va dung thu tu goc.")
+
+
 def hand_angle_to_pulse_us(angle: float) -> float:
     validate_hand_angle(angle)
-    electrical_angle = SERVO_ANGLE_OFFSET_DEGREES + SERVO_ANGLE_DIRECTION * angle
-    if not math.isfinite(electrical_angle) or not 0 <= electrical_angle <= 180:
-        raise ValueError("Goc tay va bu goc phai tao xung servo trong 500..2500 us.")
-    return 500 + electrical_angle / 180.0 * 2000
+    validate_hand_calibration()
+    fraction = (angle - SERVO_DOWN_ANGLE) / (SERVO_UP_ANGLE - SERVO_DOWN_ANGLE)
+    if not 0 <= fraction <= 1:
+        raise ValueError("Goc tay nam ngoai hai moc da hieu chinh.")
+    return SERVO_DOWN_PULSE_US + fraction * (SERVO_UP_PULSE_US - SERVO_DOWN_PULSE_US)
 
 
 def validate_claw_seconds(seconds: float) -> None:
@@ -125,12 +139,75 @@ class GPIOServoOutput:
             self._gpio.cleanup(self._pin)
 
 
+class KernelPWMLiftOutput:
+    """BCM 18 kernel pwm-gpio output, separate from BCM 12 hardware PWM0."""
+
+    def __init__(self, pin: int = SERVO_BCM_PIN) -> None:
+        if pin != SERVO_BCM_PIN:
+            raise ValueError("pwm-gpio chi dieu khien chan nang/ha trong config.py.")
+        validate_hand_calibration()
+        chip = find_gpio_pwm_chip(pin)
+        try:
+            hardware = importlib.import_module("rpi_hardware_pwm")
+        except ImportError as error:
+            raise RuntimeError("Thieu rpi-hardware-pwm: cai requirements.txt tren Raspberry Pi.") from error
+        self._pwm = None
+        self._closed = False
+        self._running = False
+        self._pulse_us: int | None = None
+        try:
+            self._pwm = hardware.HardwarePWM(pwm_channel=0,
+                                             hz=SERVO_PWM_FREQUENCY_HZ, chip=chip)
+            self.release()
+        except (Exception, KeyboardInterrupt) as error:
+            try:
+                self.close()
+            except Exception:
+                logger.exception("Loi dung pwm-gpio sau khi khoi tao nang/ha that bai")
+            if isinstance(error, Exception):
+                raise RuntimeError(
+                    f"Khong mo duoc pwm-gpio BCM {pin} tren pwmchip{chip}. "
+                    f"Kiem tra overlay, reboot va quyen ghi sysfs. Chi tiet: {error}"
+                ) from error
+            raise
+
+    def set_angle(self, angle: float) -> None:
+        pulse_us = round(hand_angle_to_pulse_us(angle))
+        if self._closed:
+            raise RuntimeError("Dau ra nang/ha da dong.")
+        if pulse_us != self._pulse_us:
+            duty = pulse_us / (1_000_000 / SERVO_PWM_FREQUENCY_HZ) * 100
+            if self._running:
+                self._pwm.change_duty_cycle(duty)
+            else:
+                self._pwm.start(duty)
+                self._running = True
+            self._pulse_us = pulse_us
+
+    def release(self) -> None:
+        if not self._closed and self._pwm is not None:
+            self._pwm.stop()
+            self._running = False
+            self._pulse_us = None
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            self.release()
+        finally:
+            self._closed = True
+
+
 class HardwarePWMClawOutput:
     """Kernel hardware PWM0 routed to BCM 12; independent of Python edge timing."""
 
     def __init__(self, pin: int = CLAW_BCM_PIN) -> None:
         if pin != CLAW_BCM_PIN:
             raise ValueError("PWM phan cung chi dieu khien GPIO cang trong config.py.")
+        if CLAW_PWM_CHANNEL != 0:
+            raise ValueError("BCM 12 phai dung kenh PWM0; kiem tra CLAW_PWM_CHANNEL.")
+        validate_claw_pwm_chip(CLAW_PWM_CHIP)
         try:
             hardware = importlib.import_module("rpi_hardware_pwm")
         except ImportError as error:
@@ -189,9 +266,10 @@ class HandController:
     """Timed fixed lift endpoints on BCM 18; position starts at the lowered assumption."""
 
     def __init__(self, output_factory: Callable[[], ServoOutput],
-                 sleeper: Callable[[float], None] = time.sleep) -> None:
+                 sleeper: Callable[[float], None] = time.sleep, *,
+                 calibration_required: bool = True) -> None:
         for angle in (SERVO_START_ANGLE, SERVO_UP_ANGLE, SERVO_DOWN_ANGLE):
-            hand_angle_to_pulse_us(angle)
+            validate_hand_angle(angle)
         validate_hand_seconds(SERVO_MOVE_SECONDS)
         if (not math.isfinite(SERVO_MIN_MOVE_SECONDS) or SERVO_MIN_MOVE_SECONDS <= 0
                 or not math.isfinite(SERVO_UPDATE_INTERVAL_SECONDS) or SERVO_UPDATE_INTERVAL_SECONDS <= 0
@@ -202,7 +280,8 @@ class HandController:
         self._angle: float | None = SERVO_START_ANGLE
         self._sleep = sleeper
         self._closed = False
-        logger.info("Can de tay ha thap %g do truoc khi khoi dong; day la vi tri gia dinh.",
+        self._calibration_required = calibration_required
+        logger.info("Khi da hieu chinh, can dat tay o moc ha %g do truoc khi khoi dong; khong do duoc vi tri.",
                     SERVO_START_ANGLE)
 
     def _move(self, angle: float, seconds: float, label: str) -> None:
@@ -210,8 +289,10 @@ class HandController:
         validate_hand_angle(angle)
         if self._closed:
             raise RuntimeError("Bo dieu khien tay da dong.")
+        if self._calibration_required:
+            validate_hand_calibration()
         if self._angle is None:
-            raise RuntimeError("Khong biet vi tri tay sau loi/ngat. Can de tay ha thap va khoi dong lai.")
+            raise RuntimeError("Khong biet vi tri tay sau loi/ngat. Can dat tay o moc ha da hieu chinh va khoi dong lai.")
         if angle == self._angle:
             logger.info("%s: goc yeu cau da o %g do, bo qua chuyen dong.", label, angle)
             return
