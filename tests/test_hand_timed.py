@@ -22,6 +22,9 @@ class TimedHandTests(unittest.TestCase):
                 parse_command(command)
 
     def test_timed_endpoints_start_lowered_move_gradually_and_keep_holding(self):
+        hold = patch.object(self.module, "SERVO_HOLD_POSITION", True)
+        hold.start()
+        self.addCleanup(hold.stop)
         elapsed = 0
         writes = []
         output = Mock()
@@ -52,6 +55,23 @@ class TimedHandTests(unittest.TestCase):
                 self.assertLess(magnitudes[0], max(magnitudes) / 10)
                 self.assertLess(magnitudes[-1], max(magnitudes) / 10)
         output.release.assert_not_called()
+
+    def test_default_four_second_moves_release_after_each_completed_endpoint(self):
+        elapsed = [0.0]
+        releases = []
+        output = Mock()
+        output.release.side_effect = lambda: releases.append(
+            (elapsed[0], output.set_angle.call_args.args[0]))
+        hand = self.module.HandController(lambda: output,
+            sleeper=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+        hand.hand_up(4)
+        self.assertEqual(len(releases), 1)
+        self.assertAlmostEqual(releases[0][0], 4.1)
+        self.assertEqual(releases[0][1], 80)
+        hand.hand_down(4)
+        self.assertEqual(len(releases), 2)
+        self.assertAlmostEqual(releases[1][0], 8.2)
+        self.assertEqual(releases[1][1], -10)
 
     def test_negative_angle_mapping_stays_within_servo_pulse_range(self):
         gpio = Mock(BCM=11, OUT=0)

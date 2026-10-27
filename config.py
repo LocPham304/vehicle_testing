@@ -40,8 +40,9 @@ SERVO_MOVE_SECONDS = 2.0
 SERVO_MIN_MOVE_SECONDS = 2.0
 SERVO_UPDATE_INTERVAL_SECONDS = 0.02
 SERVO_SETTLE_SECONDS = 0.1
-# Keep the lift supported after a move, as in the previous implementation.
-SERVO_HOLD_POSITION = True
+# Release the lift after a move so it does not resist manual repositioning.
+# PWM off removes active support; the arm may lower under load.
+SERVO_HOLD_POSITION = False
 # Claw endpoints requested by the user: decreasing angle opens the gripper.
 CLAW_MIN_ANGLE = 0.0
 CLAW_MAX_ANGLE = 100.0

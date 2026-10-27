@@ -15,7 +15,7 @@ from vehicle_testing.config import (
     CLAW_MOVE_SECONDS, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE, CLAW_START_ANGLE,
     CLAW_MIN_MOVE_SECONDS, CLAW_SETTLE_SECONDS,
     SERVO_MOVE_SECONDS, SERVO_UP_ANGLE, SERVO_DOWN_ANGLE, SERVO_START_ANGLE,
-    SERVO_MIN_MOVE_SECONDS, SERVO_CALIBRATED,
+    SERVO_MIN_MOVE_SECONDS, SERVO_CALIBRATED, SERVO_HOLD_POSITION,
 )
 from vehicle_testing.hand import (
     DryRunServoOutput, KernelPWMLiftOutput, HardwarePWMClawOutput, HandController, ClawController,
@@ -75,7 +75,7 @@ Cang dung GPIO BCM {CLAW_BCM_PIN}; can de cang khep {CLAW_START_ANGLE:g} do truo
 Cang dung PWM phan cung BCM 12; can cau hinh overlay theo README truoc khi chay that.
 Mo/dong cang chia buoc goc trong {CLAW_MOVE_SECONDS:g} giay mac dinh, toi thieu {CLAW_MIN_MOVE_SECONDS:g} giay.
 Sau do cho {CLAW_SETTLE_SECONDS:g} giay de phat goc cuoi; chua do duoc toc do co cau that.
-Tay nang/ha giu PWM; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
+Tay nang/ha {'giu PWM' if SERVO_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc'}; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
 Thoat/Ctrl+C se tat PWM cac servo.
 Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
 Chay xong thi xoa danh sach. Co the nhap kich ban moi.

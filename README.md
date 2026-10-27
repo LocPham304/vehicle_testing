@@ -17,7 +17,6 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
-| `dual_pwm_test.py` | File thử độc lập hai kênh PWM phần cứng BCM 12/13; có dry-run và kiểm tra chỉ đọc |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -132,10 +131,6 @@ cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
 
 ## Tay nâng/hạ qua GPIO BCM 18
 
-**Phương án thử riêng BCM 12/13:** xem [dual-pwm-test.md](docs/dual-pwm-test.md).
-File `dual_pwm_test.py` không sửa chương trình chính; thử thật cần chuyển dây
-nâng/hạ sang BCM 13 và đổi overlay. Khi chưa chuyển, chỉ dùng `--dry-run`.
-
 Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng driver
 **`pwm-gpio` của kernel ở 50 Hz**, qua API sysfs của `rpi-hardware-pwm`.
 Chân này đã được người dùng xác nhận bằng phép thử `probe_servo.py --pin 18`.
@@ -219,8 +214,12 @@ Giữ PWM chạy giữa các bước, chỉ đổi duty, bỏ qua xung nguyên �
 Không đổi overlay để xuất PWM0 phần cứng ra BCM 18,
 vì kênh PWM0 đang dùng cho càng BCM 12.
 
-PWM servo nâng/hạ mặc định được giữ (`SERVO_HOLD_POSITION=True`), kể cả khi chạy bánh, `ngung` hoặc `dung`,
-để tiếp tục yêu cầu giữ vị trí. Servo càng mặc định ngắt PWM sau lệnh như mô tả dưới đây.
+PWM servo nâng/hạ mặc định được tắt sau mỗi hành trình (`SERVO_HOLD_POSITION=False`),
+sau khoảng chờ cuối 0,1 giây, để không tiếp tục giữ cứng tay. Servo càng cũng
+mặc định ngắt PWM sau lệnh như mô tả dưới đây. Cơ cấu có thể hạ theo tải khi mất
+lực giữ. Nếu di chuyển tay bằng tay, chương trình không cập nhật được góc thực;
+cần chuẩn bị lại mốc hạ và khởi động lại trước khi chạy tiếp.
+Đặt `SERVO_HOLD_POSITION=True` khi cần giữ lực và đã xác nhận cơ cấu phù hợp.
 `dung` vẫn hủy kịch bản đang soạn.
 Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng từng GPIO servo đã mở;
 sau đó servo không còn được yêu cầu giữ lực và tay có thể hạ theo tải.
@@ -313,7 +312,7 @@ Không chạy `probe_servo.py` hay chương trình servo khác cùng lúc với 
 
 Mặc định **`CLAW_HOLD_POSITION = False`**: hết thời gian thì gửi duty 0 để ngắt
 PWM riêng BCM 12. Càng không giữ lực kẹp liên tục và vật đang kẹp có thể tuột.
-Nâng/hạ BCM 18 vẫn giữ PWM. `CLAW_HOLD_POSITION = True` giữ PWM sau thao tác;
+Nâng/hạ BCM 18 cũng mặc định tắt PWM sau hành trình. `CLAW_HOLD_POSITION = True` giữ PWM sau thao tác;
 chỉ dùng sau khi kiểm tra nguyên nhân giật thực tế. Người dùng từng xác nhận
 càng hết giật ngay khi Ctrl+C tắt PWM; chưa xác định nguyên nhân phần cứng.
 
@@ -334,8 +333,8 @@ khuyến nghị tiếp cận dần và dừng trước giới hạn hành trình
 ### Chẩn đoán cổng servo chưa xác định GPIO
 
 Tên in trên bo như PWM4 hoặc S1 cần được đối chiếu với đường mạch; số cổng
-không tự trở thành số BCM. Các ví dụ cũ trong repo nhắc tới BCM 12/13/18/19,
-nhưng chưa có sơ đồ xác nhận từng cổng trên bo Edison Academy Rev1.1.
+không tự trở thành số BCM. Các ví dụ cũ trong repo có thể dùng chân khác;
+chưa có sơ đồ xác nhận từng cổng trên bo Edison Academy Rev1.1.
 Trên xe hiện tại, phép thử thực tế đã xác nhận **nâng/hạ = BCM 18**,
 **càng = BCM 12**; hai giá trị này đã được áp dụng trong `config.py`.
 

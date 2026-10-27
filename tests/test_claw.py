@@ -173,14 +173,15 @@ class ClawTests(unittest.TestCase):
         gpio.cleanup.assert_called_once_with(18)
         claw.close()
 
-    def test_optional_hold_keeps_claw_pwm_and_lift_always_holds(self):
+    def test_optional_hold_can_keep_each_servo_pwm(self):
         output = Mock()
         with patch.object(self.module, "CLAW_HOLD_POSITION", True):
             claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
         claw.open()
         output.release.assert_not_called()
-        lift = self.module.HandController(lambda: output, sleeper=lambda _: None)
-        lift.hand_up()
+        with patch.object(self.module, "SERVO_HOLD_POSITION", True):
+            lift = self.module.HandController(lambda: output, sleeper=lambda _: None)
+            lift.hand_up()
         output.release.assert_not_called()
 
     def test_release_error_is_reported(self):

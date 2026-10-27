@@ -13,7 +13,7 @@ from typing import Callable
 def main(argv: list[str] | None = None,
          sleeper: Callable[[float], None] = time.sleep) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pin", type=int, required=True, choices=(12, 13, 18, 19),
+    parser.add_argument("--pin", type=int, required=True, choices=(12, 18, 19),
                         help="BCM pin candidate from the repository's GPIO examples; not a port number")
     parser.add_argument("--dry-run", action="store_true", help="Print requests without opening GPIO")
     parser.add_argument("--pulse-us", type=float,

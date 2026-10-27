@@ -79,8 +79,10 @@ Không có phép đọc sysfs hay unit test nào thay thế phép đo này. Gi�
 Ngắt PWM không giữ lực đỡ tay; việc tay hiện chưa tụt không chứng minh giữ được
 với tải khác. Các số µs là tín hiệu yêu cầu, không phải số độ hoặc kết quả đo trục.
 
-`SERVO_HOLD_POSITION=True` đang giữ lực đỡ tay. Không đổi thành False để che rung:
-ngắt xung có thể làm tay hạ theo tải và không sửa được việc đi quá hành trình.
+Theo yêu cầu nhả lực sau lệnh, mặc định `SERVO_HOLD_POSITION=False`: kết thúc
+hành trình và chờ 0,1 giây rồi tắt PWM. Cơ cấu có thể hạ theo tải khi mất lực giữ;
+thay đổi này không sửa được việc đi quá hành trình. Nếu dịch chuyển tay bằng tay,
+chuẩn bị lại mốc hạ và khởi động lại trước khi chạy tiếp vì không có phản hồi góc.
 
 ## Phương án phát xung mà không đổi dây
 
@@ -131,7 +133,8 @@ Sau khi đo lại hai xung theo cơ cấu, có thể thay `SERVO_DOWN_PULSE_US`,
 `SERVO_UP_PULSE_US` và đặt `SERVO_CALIBRATED=True` để ghi nhận đã hiệu chỉnh.
 Không sao chép xung mẫu từ unit test như một kết quả đo trên xe.
 Chương trình chuyển yêu cầu theo bước tối đa 20 ms, nhẹ ở hai đầu, không
-khởi động lại PWM giữa các bước. Vẫn giữ lực nâng sau lệnh theo cấu hình cũ.
+khởi động lại PWM giữa các bước. Mặc định tắt PWM sau hành trình và chờ cuối;
+chỉ giữ lực khi bật lại `SERVO_HOLD_POSITION=True`.
 
 ## Nguồn kỹ thuật
 

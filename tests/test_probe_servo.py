@@ -44,7 +44,7 @@ class ServoProbeTests(unittest.TestCase):
         self.gpio.setup.assert_not_called()
 
     def test_requires_explicit_candidate_pin(self):
-        for args in ([], ["--pin", "4"], ["--pin", "0"]):
+        for args in ([], ["--pin", "4"], ["--pin", "0"], ["--pin", "13"]):
             with self.subTest(args=args), patch("sys.stderr", io.StringIO()):
                 with self.assertRaises(SystemExit) as error:
                     self.run_probe(*args)
@@ -62,11 +62,11 @@ class ServoProbeTests(unittest.TestCase):
 
     def test_start_failure_still_stops_pwm_and_cleans_selected_pin(self):
         self.pwm.start.side_effect = OSError("start failed")
-        result, output = self.run_probe("--pin", "13")
+        result, output = self.run_probe("--pin", "18")
         self.assertEqual(result, 1)
         self.assertIn("start failed", output)
         self.pwm.stop.assert_called_once()
-        self.gpio.cleanup.assert_called_once_with(13)
+        self.gpio.cleanup.assert_called_once_with(18)
 
     def test_raw_pulse_mode_uses_microseconds_without_angle_conversion(self):
         waits = []
