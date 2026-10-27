@@ -33,18 +33,45 @@ sudo reboot
 
 ## Thư viện và quyền truy cập
 
-Chạy trong thư mục `vehicle_testing`, với môi trường Python hiện đang chạy được
-`main.py`:
+Trên Debian 13, pip có thể báo `externally-managed-environment` khi dùng Python
+hệ thống. Trong thư mục `vehicle_testing`, tạo và kích hoạt môi trường ảo trước:
 
 ```sh
-python -m pip install -r requirements.txt
+sudo apt install python3-venv
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+python -s -m pip install --no-user -r requirements.txt
+python -m pip show rpi-hardware-pwm
+```
+
+`--system-site-packages` cho phép dùng lại các gói GPIO đã cài qua apt, trong khi
+pip ghi các gói mới vào `.venv`. Nếu môi trường `.venv` đã được tạo cho dự án,
+chỉ cần kích hoạt và cài requirements. Mỗi terminal mới cần chạy lại
+`source .venv/bin/activate`. Không cài bằng pip vào Python hệ thống.
+
+`-s` bỏ qua thư viện riêng trong `/home/pi/.local` khi pip kiểm tra các gói đã
+cài. Nhờ vậy, các gói cần thiết được cài vào `.venv` thay vì pip báo đã có ở thư
+mục riêng của `pi`, nơi Python chạy bằng `sudo` không tìm thấy. `--no-user` giữ
+đích cài trong môi trường ảo. Các gói hệ thống qua apt vẫn được dùng lại.
+
+Nếu đã gặp `Requirement already satisfied ... /home/pi/.local/...` rồi chạy
+bằng sudo lại báo thiếu `board`, sửa ngay trong thư mục `vehicle_testing`:
+
+```sh
+.venv/bin/python -s -m pip install --no-user adafruit-blinka adafruit-circuitpython-pca9685
+sudo .venv/bin/python -c "import board; import busio; from adafruit_pca9685 import PCA9685; print(board.__file__); print('Import OK')"
+```
+
+Chỉ tiếp tục chạy phần cứng khi bước kiểm tra import đã thành công.
+
+Thư viện `rpi-hardware-pwm` dùng sysfs của kernel; không cần pigpio/pigpiod.
+Sau khi cấu hình boot ở trên đã được áp dụng, kiểm tra và chạy:
+
+```sh
 ls -l /sys/class/pwm/
 python main.py
 ```
 
-Thư viện `rpi-hardware-pwm` dùng sysfs của kernel; không cần pigpio/pigpiod.
-Nếu Python hệ thống bị chặn bởi môi trường được quản lý, dùng môi trường ảo của
-dự án theo phần cài đặt trong README; không bỏ qua cơ chế quản lý gói của hệ thống.
 Nếu thiếu quyền ghi sysfs, thử đúng trình thông dịch Python hiện tại với sudo:
 
 ```sh

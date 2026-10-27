@@ -118,7 +118,7 @@ class ClawTests(unittest.TestCase):
         used.close()
         self.assertTrue(self.output.closed)
 
-    def test_mixed_queue_preserves_lift_reference_and_stops_wheels_for_claw(self):
+    def test_mixed_queue_keeps_independent_lift_endpoints_and_stops_wheels_for_claw(self):
         lift_output = RecordingServo()
         lift = self.module.HandController(lambda: lift_output, sleeper=lambda _: None)
         states = {}
@@ -129,9 +129,11 @@ class ClawTests(unittest.TestCase):
             self.assertTrue(all(value == 0 for value in states.values()))
             original_write(angle)
         self.output.set_angle = write
-        self.session(["tay_goc 40", "nang 10", "mo_cang 2.5", "ha 5", "dong_cang",
+        self.session(["nang 2", "mo_cang 2.5", "ha 3", "dong_cang",
                       "chay", "chay", "thoat"], self.claw(), lift, motor)
-        self.assertEqual(lift_output.angles, [40, 30, 35])
+        self.assertEqual(lift_output.angles[0], -10)
+        self.assertIn(80, lift_output.angles)
+        self.assertEqual(lift_output.angles[-1], -10)
         self.assertEqual(self.output.angles[0], 100)
         self.assertIn(0, self.output.angles)
         self.assertEqual(self.output.angles[-1], 100)
@@ -177,7 +179,7 @@ class ClawTests(unittest.TestCase):
         claw.open()
         output.release.assert_not_called()
         lift = self.module.HandController(lambda: output, sleeper=lambda _: None)
-        lift.set_angle(40)
+        lift.hand_up()
         output.release.assert_not_called()
 
     def test_release_error_is_reported(self):
@@ -198,7 +200,7 @@ class ClawTests(unittest.TestCase):
                 patch.object(main, "PCA9685Output"), \
                 patch.object(main, "HandController", side_effect=lambda factory: real_lift(factory, sleeper=lambda _: None)), \
                 patch.object(main, "ClawController", side_effect=lambda factory: real_claw(factory, sleeper=lambda _: None)), \
-                patch("builtins.input", side_effect=["tay_goc 40", "mo_cang", "chay", "thoat"]), \
+                patch("builtins.input", side_effect=["nang 2", "mo_cang", "chay", "thoat"]), \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(main.main([]), 0)
         gpio.PWM.assert_called_once_with(18, 50)

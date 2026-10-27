@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng GPIO BCM 18 (0–80°), càng dùng GPIO BCM 12 (mở 0°, đóng 100°).
+Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BCM 12 (mở 0°, đóng 100°).
 
 ## Cấu trúc
 
@@ -13,7 +13,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (0–80°), càng dùng GPIO BCM 12 (mở 0°, 
 | --- | --- |
 | `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
-| `hand.py` | Nâng/hạ BCM 18 trong 0–80°; càng BCM 12 ở 0°/100°, dùng PWM phần cứng |
+| `hand.py` | Nâng/hạ BCM 18 tới −10°/80° theo thời gian; càng BCM 12 dùng PWM phần cứng |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
 | `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
 | `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
@@ -43,9 +43,10 @@ Bật I²C trên Raspberry Pi và dùng môi trường Python có hỗ trợ Ada
 Ví dụ tạo môi trường riêng trên Raspberry Pi OS:
 
 ```sh
+sudo apt install python3-venv
 python3 -m venv --system-site-packages vehicle_testing/.venv
 source vehicle_testing/.venv/bin/activate
-python -m pip install -r vehicle_testing/requirements.txt
+python -s -m pip install --no-user -r vehicle_testing/requirements.txt
 python vehicle_testing/main.py
 ```
 
@@ -134,35 +135,38 @@ Không chạy đồng thời với chương trình khác đang dùng GPIO 18 ho�
 Thư viện GPIO có trong `requirements.txt` cho Linux; `--dry-run` không nhập hay mở GPIO.
 
 ```text
-tay_goc 40
-nang 10
-ha 20
+nang 4
+ha 4
 chay
 ```
 
-Kịch bản yêu cầu góc **40° → 30° → 50°**. `tay_goc` đặt góc tuyệt đối;
-`nang` giảm góc tương đối như `run_steps(-angle)`, còn `ha` tăng góc như
-`run_steps(angle)` trong `stem_firmware/driver/robot.py`. Các lệnh nhận **độ**,
-không nhận số giây hoặc PWM. Bản GPIO gửi trực tiếp góc đích, chưa có điều chỉnh
-tốc độ chuyển góc như thư viện servo của firmware.
+Chỉ dùng `nang [giây]` và `ha [giây]`: nâng tới **80°**, hạ tới **−10°**.
+Bỏ số giây thì mặc định 2 giây (`SERVO_MOVE_SECONDS`); thời gian phải hữu hạn,
+ít nhất 2 giây (`SERVO_MIN_MOVE_SECONDS`). Không nhận thêm góc hoặc PWM.
+Lệnh đặt góc tay cũ đã được bỏ khỏi CLI.
 
-Mỗi phiên khởi động chưa biết góc tay; chương trình không tự đưa tay về 0°.
-Phải chạy `tay_goc <0..80>` trước `nang`/`ha`. Đây là lệnh di chuyển thực sự,
-hãy chọn góc khởi đầu phù hợp với vị trí cơ cấu. Góc được ghi nhớ chỉ là góc đã
-yêu cầu, không phải góc đo từ cảm biến. Mốc được giữ giữa các kịch bản trong cùng phiên.
-Thiếu mốc khi thực hiện `nang`/`ha` thì phiên báo lỗi, bỏ các lệnh còn lại và thoát.
+**Trước khi khởi động, để tay hạ thấp nhất (−10°)** như người dùng đã xác nhận.
+Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;
+khởi tạo không tự phát xung hoặc đưa tay về gốc. Các lệnh chuyển góc theo từng
+bước tối đa 20 ms, tăng/giảm tốc nhẹ ở hai đầu, sau đó chờ thêm 0,1 giây.
+`nang 4` chuyển yêu cầu −10° → 80° trong 4 giây; `ha 4` đi ngược lại.
+Gửi lại cùng một đích đã yêu cầu sẽ bỏ qua. Lỗi/ngắt giữa chừng làm mất mốc và
+chặn các lệnh tay tiếp theo; cần chuẩn bị lại tay ở vị trí thấp và khởi động lại.
 
-Giới hạn giữ ở **0–80°**: ví dụ đang 30°, `nang 50` chỉ về 0°; đang 70°,
-`ha 20` chỉ tới 80°. Góc tuyệt đối ngoài giới hạn bị từ chối; số độ tương đối
-phải dương hữu hạn. Bộ đổi PWM giữ thang điện 0–180° của `test_servo.py`:
-`duty = 2.5 + angle / 180 * 10` (%), không đổi thang 0–80° thành 0–180°.
+Các số −10°/80° là mốc góc của cơ cấu. Ánh xạ điện ban đầu là
+`góc servo = SERVO_ANGLE_OFFSET_DEGREES + SERVO_ANGLE_DIRECTION × góc tay`,
+mặc định **80 − góc tay** để giữ chiều nâng giảm xung, hạ tăng xung của code cũ.
+Sau đó đổi theo thang servo 0–180° tương ứng 500–2500 µs. Vì vậy −10° → 1500 µs,
+80° → 500 µs; không gửi góc âm trực tiếp thành xung dưới 500 µs. Hai mốc vật lý
+và ánh xạ này chưa được hiệu chỉnh trên cơ cấu thật; cần kiểm tra chiều và hành trình.
 
-Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe,
-và chương trình gửi lệnh dừng bánh trước khi điều khiển tay. Mỗi lần đổi góc
-chờ `SERVO_MOVE_WAIT_SECONDS = 1.0` trong `config.py`; đây là thời gian chờ
-ban đầu, chưa đo thời gian cơ cấu thực sự tới đích.
+Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;
+chương trình gửi lệnh dừng bánh trước khi điều khiển tay. BCM 18 vẫn dùng PWM phần
+mềm theo yêu cầu giữ dây, nên chia bước chỉ xử lý việc nhảy góc đích, chưa bảo đảm
+hết rung như PWM phần cứng của càng. Không đổi overlay để xuất PWM0 ra BCM 18,
+vì kênh PWM0 đang dùng cho càng BCM 12.
 
-PWM servo nâng/hạ được giữ sau mỗi lệnh, kể cả khi chạy bánh, `ngung` hoặc `dung`,
+PWM servo nâng/hạ mặc định được giữ (`SERVO_HOLD_POSITION=True`), kể cả khi chạy bánh, `ngung` hoặc `dung`,
 để tiếp tục yêu cầu giữ vị trí. Servo càng mặc định ngắt PWM sau lệnh như mô tả dưới đây.
 `dung` vẫn hủy kịch bản đang soạn.
 Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng từng GPIO servo đã mở;
@@ -192,7 +196,7 @@ Chỉ dùng `mo_cang [giây]` và `dong_cang [giây]`, không cần lệnh đặ
 Mở yêu cầu **0°**, đóng yêu cầu **100°**: người dùng xác nhận 90° chưa khép kín,
 cần tăng tới khoảng 100°. Giới hạn riêng của càng là 0–100°.
 Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGLE`,
-`CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ vẫn giới hạn 0–80°.
+`CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ dùng riêng −10–80°.
 Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
 
 **Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 100°**, như người
@@ -233,7 +237,10 @@ vì đó là servo nâng/hạ. Khởi động lại Pi để áp dụng, sau đ�
 `vehicle_testing` trong môi trường Python đang dùng:
 
 ```sh
-python -m pip install -r requirements.txt
+sudo apt install python3-venv
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+python -s -m pip install --no-user -r requirements.txt
 python main.py
 ```
 

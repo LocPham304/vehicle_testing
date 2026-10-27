@@ -23,10 +23,23 @@ TURN_RIGHT_SECONDS_PER_DEGREE = 0.0089
 SERVO_BCM_PIN = 18
 CLAW_BCM_PIN = 12
 SERVO_PWM_FREQUENCY_HZ = 50
-SERVO_MIN_ANGLE = 0.0
+SERVO_MIN_ANGLE = -10.0
 SERVO_MAX_ANGLE = 80.0
-# Wait between commands; this is not a measurement of the arm's travel time.
-SERVO_MOVE_WAIT_SECONDS = 1.0
+SERVO_UP_ANGLE = 80.0
+SERVO_DOWN_ANGLE = -10.0
+# User prepares the lift at its lowest position before starting the program.
+SERVO_START_ANGLE = SERVO_DOWN_ANGLE
+# Joint angle increases when raising; keep the previous decreasing-pulse direction.
+# Electrical angle = 80 - joint angle, so -10..80 maps to electrical 90..0.
+# This is an initial mapping, not a measurement of the mounted mechanism.
+SERVO_ANGLE_OFFSET_DEGREES = 80.0
+SERVO_ANGLE_DIRECTION = -1.0
+SERVO_MOVE_SECONDS = 2.0
+SERVO_MIN_MOVE_SECONDS = 2.0
+SERVO_UPDATE_INTERVAL_SECONDS = 0.02
+SERVO_SETTLE_SECONDS = 0.1
+# Keep the lift supported after a move, as in the previous implementation.
+SERVO_HOLD_POSITION = True
 # Claw endpoints requested by the user: decreasing angle opens the gripper.
 CLAW_MIN_ANGLE = 0.0
 CLAW_MAX_ANGLE = 100.0

@@ -1,4 +1,4 @@
-"""Exercise arm commands without opening Raspberry Pi GPIO."""
+"""Lift command lifecycle, GPIO isolation and queue checks without hardware."""
 
 import importlib
 import io
@@ -29,21 +29,6 @@ class RecordingServo:
         self.closed = True
 
 
-class HandParserTests(unittest.TestCase):
-    def test_accepts_relative_degrees_and_absolute_zero(self):
-        self.assertEqual(parse_command(" NANG 10.5 "), ("hand_up", 10.5, 0))
-        self.assertEqual(parse_command("ha 20"), ("hand_down", 20, 0))
-        self.assertEqual(parse_command("tay_goc 0"), ("hand_angle", 0, 0))
-        self.assertEqual(parse_command("tay_goc 80"), ("hand_angle", 80, 0))
-
-    def test_rejects_invalid_angles_and_extra_pwm(self):
-        for command in ("nang", "ha 1 0.5", "nang 0", "ha -1", "nang nan",
-                        "ha inf", "tay_goc -1", "tay_goc 81", "tay_goc nan",
-                        "tay_goc inf", "tay_goc abc", "tay_goc 10 0.5"):
-            with self.subTest(command=command), self.assertRaises(ValueError):
-                parse_command(command)
-
-
 class HandControllerTests(unittest.TestCase):
     def setUp(self):
         self.module = importlib.import_module("vehicle_testing.hand")
@@ -51,66 +36,46 @@ class HandControllerTests(unittest.TestCase):
         self.factory = Mock(return_value=self.output)
         self.hand = self.module.HandController(self.factory, sleeper=lambda _: None)
 
-    def test_startup_and_close_without_commands_never_open_gpio(self):
-        self.hand.close()
+    def test_invalid_seconds_never_open_gpio(self):
+        for seconds in (0, 0.5, -1, float("nan"), float("inf")):
+            for method in (self.hand.hand_up, self.hand.hand_down):
+                with self.subTest(seconds=seconds), self.assertRaises(ValueError):
+                    method(seconds)
         self.factory.assert_not_called()
 
-    def test_relative_commands_require_reference_before_opening_gpio(self):
-        for method in (self.hand.hand_up, self.hand.hand_down):
-            with self.assertRaisesRegex(ValueError, "tay_goc"):
-                method(10)
-        self.factory.assert_not_called()
+    def test_repeated_endpoint_does_not_move_again(self):
+        self.hand.hand_up()
+        angles = self.output.angles.copy()
+        self.hand.hand_up(4)
+        self.assertEqual(self.output.angles, angles)
 
-    def test_relative_signs_limits_and_no_drift_at_limit(self):
-        self.hand.set_angle(40)
-        self.hand.hand_up(10)
-        self.hand.hand_down(20)
-        self.hand.hand_up(999)
-        self.hand.hand_up(10)
-        self.hand.hand_down(999)
-        self.hand.hand_down(10)
-        self.hand.hand_up(10)
-        self.assertEqual(self.output.angles, [40, 30, 50, 0, 80, 70])
-
-    def test_invalid_requests_never_open_gpio(self):
-        for angle in (-1, 81, float("nan"), float("inf")):
-            with self.assertRaises(ValueError):
-                self.hand.set_angle(angle)
-        for amount in (0, -1, float("nan"), float("inf")):
-            with self.assertRaises(ValueError):
-                self.hand.hand_up(amount)
-            with self.assertRaises(ValueError):
-                self.hand.hand_down(amount)
-        self.factory.assert_not_called()
-
-    def test_interrupted_move_releases_pwm_and_forgets_reference(self):
-        self.hand.set_angle(40)
-        def interrupt(_):
-            raise KeyboardInterrupt
-        hand = self.module.HandController(self.factory, sleeper=interrupt)
+    def test_interruption_releases_and_invalidates_position(self):
+        hand = self.module.HandController(self.factory, sleeper=Mock(side_effect=KeyboardInterrupt()))
         with self.assertRaises(KeyboardInterrupt):
-            hand.set_angle(50)
+            hand.hand_up()
         self.assertTrue(self.output.released)
-        with self.assertRaisesRegex(ValueError, "tay_goc"):
-            hand.hand_up(10)
+        for method in (hand.hand_up, hand.hand_down):
+            with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
+                method()
 
-    def test_write_error_does_not_keep_previous_reference(self):
-        self.hand.set_angle(40)
-        self.output.set_angle = Mock(side_effect=OSError("GPIO failed"))
+    def test_write_error_releases_and_invalidates_position(self):
+        self.output.set_angle = Mock(side_effect=OSError("write failed"))
         with self.assertRaises(OSError):
-            self.hand.hand_down(10)
+            self.hand.hand_up()
         self.assertTrue(self.output.released)
-        with self.assertRaisesRegex(ValueError, "tay_goc"):
-            self.hand.hand_down(10)
+        with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
+            self.hand.hand_down()
 
-    def test_close_releases_output_and_rejects_later_commands(self):
-        self.hand.set_angle(40)
+    def test_close_is_lazy_idempotent_and_rejects_later_commands(self):
         self.hand.close()
         self.hand.close()
-        self.assertTrue(self.output.closed)
+        self.factory.assert_not_called()
         with self.assertRaises(RuntimeError):
-            self.hand.set_angle(20)
-        self.assertEqual(self.output.angles, [40])
+            self.hand.hand_up()
+        used = self.module.HandController(self.factory, sleeper=lambda _: None)
+        used.hand_up()
+        used.close()
+        self.assertTrue(self.output.closed)
 
 
 class GPIOOutputTests(unittest.TestCase):
@@ -123,25 +88,22 @@ class GPIOOutputTests(unittest.TestCase):
         with patch.dict(sys.modules, {"RPi": Mock(), "RPi.GPIO": self.gpio}):
             return self.module.GPIOServoOutput()
 
-    def test_pin_frequency_and_duty_keep_180_degree_electrical_scale(self):
+    def test_gpio_stays_on_bcm18_and_cleanup_is_pin_scoped(self):
         output = self.open()
-        self.gpio.setmode.assert_called_once_with(11)
-        self.gpio.setup.assert_called_once_with(18, 0)
         self.gpio.PWM.assert_called_once_with(18, 50)
         self.pwm.start.assert_called_once_with(0)
-        output.set_angle(0)
-        self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 2.5)
+        output.set_angle(-10)
+        self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 7.5)
         output.set_angle(80)
-        self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 6.944444444)
-        self.pwm.stop.assert_not_called()  # Keep holding after a completed move.
+        self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 2.5)
+        self.pwm.stop.assert_not_called()
         output.close()
-        self.assertEqual(self.pwm.ChangeDutyCycle.call_args.args, (0,))
         self.pwm.stop.assert_called_once()
         self.gpio.cleanup.assert_called_once_with(18)
 
     def test_invalid_angle_does_not_change_pwm(self):
         output = self.open()
-        for angle in (-1, 81, float("nan")):
+        for angle in (-11, 81, float("nan")):
             with self.assertRaises(ValueError):
                 output.set_angle(angle)
         self.pwm.ChangeDutyCycle.assert_not_called()
@@ -165,72 +127,63 @@ class GPIOOutputTests(unittest.TestCase):
 
 class HandSessionTests(unittest.TestCase):
     def setUp(self):
-        hand_module = importlib.import_module("vehicle_testing.hand")
-        self.motor_output = Mock()
-        self.controller = MotorController(self.motor_output, sleeper=lambda _: None)
+        module = importlib.import_module("vehicle_testing.hand")
+        self.motor = Mock()
+        self.controller = MotorController(self.motor, sleeper=lambda _: None)
         self.output = RecordingServo()
         self.factory = Mock(return_value=self.output)
-        self.hand = hand_module.HandController(self.factory, sleeper=lambda _: None)
+        self.hand = module.HandController(self.factory, sleeper=lambda _: None)
 
     def session(self, lines):
         with patch("builtins.input", side_effect=lines), redirect_stdout(io.StringIO()):
             run_session(self.controller, self.hand)
 
-    def test_mixed_script_runs_in_order_with_wheels_off_during_servo_moves(self):
+    def test_mixed_script_stops_wheels_during_lift_moves(self):
         states = {}
-        self.motor_output.set_duty.side_effect = lambda ch, duty: states.update({ch: duty})
+        self.motor.set_duty.side_effect = lambda ch, duty: states.update({ch: duty})
         def record(angle):
             self.assertTrue(all(duty == 0 for duty in states.values()))
             self.output.angles.append(angle)
         self.output.set_angle = record
-        self.session(["tien 1", "tay_goc 40", "nang 10", "ha 20", "chay",
-                      "nang 5", "chay", "chay", "thoat"])
-        self.assertEqual(self.output.angles, [40, 30, 50, 45])
+        self.session(["tien 1", "nang 2", "ha 3", "chay", "nang", "chay", "chay", "thoat"])
+        self.assertEqual(self.output.angles[0], -10)
+        self.assertEqual(self.output.angles[-1], 80)
+        self.assertEqual(self.output.angles.count(80), 3)
 
-    def test_draft_cancel_and_eof_never_initialize_gpio(self):
-        for lines in (["tay_goc 40", "thoat"], ["tay_goc 40", EOFError()],
-                      ["tay_goc 40", "dung", "chay", "thoat"]):
+    def test_cancelled_draft_and_eof_never_initialize_gpio(self):
+        for lines in (["nang 4", "thoat"], ["nang 4", EOFError()],
+                      ["nang 4", "dung", "chay", "thoat"]):
             self.session(lines)
         self.factory.assert_not_called()
 
-    def test_missing_reference_aborts_before_later_wheel_command(self):
-        with self.assertRaisesRegex(ValueError, "tay_goc"):
-            self.session(["nang 10", "tien 1", "chay"])
-        self.factory.assert_not_called()
-        self.assertFalse(any(call.args[1] > 0 for call in self.motor_output.set_duty.call_args_list))
-
-    def test_main_closes_servo_even_when_motor_cleanup_fails(self):
-        module = importlib.import_module("vehicle_testing.main")
-        with patch.object(module, "MotorController") as motors, \
-                patch.object(module, "HandController") as hands, \
-                patch.object(module, "run_session"), redirect_stdout(io.StringIO()):
-            motors.return_value.close.side_effect = OSError("I2C close failed")
-            self.assertEqual(module.main(["--dry-run"]), 1)
-            hands.return_value.close.assert_called_once()
+    def test_servo_failure_aborts_later_wheel_move(self):
+        self.output.set_angle = Mock(side_effect=OSError("write failed"))
+        with self.assertRaises(OSError):
+            self.session(["nang", "tien 1", "chay"])
+        self.assertTrue(self.output.released)
+        self.assertFalse(any(call.args[1] > 0 for call in self.motor.set_duty.call_args_list))
 
     def test_cli_dry_run_works_without_gpio_library(self):
         root = Path(__file__).resolve().parents[2]
         result = subprocess.run(
             [sys.executable, str(root / "vehicle_testing/main.py"), "--dry-run"],
-            input="tay_goc 40\nnang 10\nha 10\nchay\nthoat\n", cwd=root,
+            input="nang 2\nha 2\nchay\nthoat\n", cwd=root,
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("SERVO goc yeu cau 30", result.stdout)
-        self.assertIn("SERVO goc yeu cau 40", result.stdout)
+        self.assertIn("NANG", result.stdout)
+        self.assertIn("HA", result.stdout)
+        self.assertNotIn("tay_goc", result.stdout)
 
-    def test_interrupt_during_motor_cleanup_still_closes_servo(self):
+    def test_cleanup_attempts_hand_even_when_motor_cleanup_fails(self):
         module = importlib.import_module("vehicle_testing.main")
-        with patch.object(module, "MotorController") as motors, \
-                patch.object(module, "HandController") as hands, \
-                patch.object(module, "run_session"), redirect_stdout(io.StringIO()):
-            motors.return_value.close.side_effect = KeyboardInterrupt
-            try:
-                result = module.main(["--dry-run"])
-            except KeyboardInterrupt:
-                self.fail("Motor cleanup interruption bypassed servo cleanup")
-            self.assertEqual(result, 130)
-            hands.return_value.close.assert_called_once()
+        for failure, expected in ((OSError("I2C close failed"), 1), (KeyboardInterrupt(), 130)):
+            with self.subTest(failure=failure), patch.object(module, "MotorController") as motors, \
+                    patch.object(module, "HandController") as hands, \
+                    patch.object(module, "run_session"), redirect_stdout(io.StringIO()):
+                motors.return_value.close.side_effect = failure
+                self.assertEqual(module.main(["--dry-run"]), expected)
+                hands.return_value.close.assert_called_once()
 
 
 if __name__ == "__main__":
