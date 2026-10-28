@@ -15,6 +15,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
 | `hand.py` | Nâng/hạ BCM 18 qua kernel pwm-gpio; càng BCM 12 dùng PWM phần cứng |
 | `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
+| `ultrasonic.py` | Đọc cảm biến siêu âm TRIG/ECHO, timeout và giải phóng riêng GPIO cảm biến |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
@@ -26,6 +27,33 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `tests/test_claw.py` | Kiểm tra hai chân servo, chiều mở/khép càng, chuyển góc từng bước và dọn cả hai servo |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
+
+## Đọc cảm biến siêu âm riêng
+
+Chạy trên Raspberry Pi từ thư mục gốc, với TRIG mặc định là **BCM 8** và ECHO
+là **BCM 11**, nguồn cảm biến OhStem **3,3 V** và GND chung:
+
+```sh
+python3 -m vehicle_testing.ultrasonic
+```
+
+Nếu đấu GPIO khác, truyền `--trig 17 --echo 27` theo dây thực tế. Các chân
+phải đang rảnh; BCM 8/11 còn dùng cho SPI0. Không chạy đồng thời module này
+với `test_ultrasonic.py` vì chúng dùng cùng chân cảm biến.
+
+Module in từng số đo theo cm, nghỉ 0,2 giây giữa các lần đọc và báo
+`KHONG DOC DUOC` khi ECHO bị treo hoặc timeout. Nhấn Ctrl+C để thoát và dọn
+riêng hai chân cảm biến. Giá trị ngoài khoảng 3–400 cm được giữ nguyên kèm
+ghi chú; phạm vi thực tế cần kiểm chứng vì tài liệu OhStem cũng ghi 3–200 cm.
+
+Code khác có thể dùng `with UltrasonicSensor() as sensor:` rồi gọi
+`sensor.read_distance_cm()` (import từ `vehicle_testing.ultrasonic`). Hàm trả
+`float` theo cm, phát sinh `TimeoutError` khi không đọc được, và không lọc/làm
+mượt dữ liệu. Bên gọi cần để khoảng nghỉ giữa các lần đo. Thư viện GPIO chỉ
+được nạp lúc tạo cảm biến; import module trên máy tính không mở phần cứng.
+
+Đây là chức năng đọc riêng; lệnh điều khiển trong `main.py` chưa gọi cảm biến
+và chưa có chức năng tự dừng khi gặp vật cản.
 
 ## Thử trên máy tính, không cần Raspberry Pi
 

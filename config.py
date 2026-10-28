@@ -11,6 +11,13 @@ PWM_FREQUENCY_HZ = 1000
 DEFAULT_SPEED = 0.5  # PWM fraction used whenever a movement omits its speed.
 DIRECTION_CHANGE_DELAY_SECONDS = 0.5
 
+# BCM GPIO numbers from the standalone ultrasonic sensor test.
+# GPIO8/GPIO11 must be free of SPI0 or other users.
+ULTRASONIC_TRIG_PIN = 8
+ULTRASONIC_ECHO_PIN = 11
+ULTRASONIC_TIMEOUT_SECONDS = 0.03
+ULTRASONIC_READ_INTERVAL_SECONDS = 0.2
+
 # Trial wheel compensation requested by the user; 1.0 restores untrimmed PWM.
 # Applied to every wheel movement, including turns, in both motor directions.
 # Effective PWM = requested PWM * gain. Each gain must be in (0, 1].

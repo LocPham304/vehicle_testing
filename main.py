@@ -65,22 +65,6 @@ HELP = f"""Lenh:
   chay               Thuc hien kich ban da nhap
   dung               Gui lenh dung va huy kich ban dang soan
   thoat              Huy kich ban dang soan, dung va thoat
-Bo trong PWM thi moi lenh dung {DEFAULT_SPEED:.0%}. PWM trong (0, 1].
-PWM tung banh = PWM yeu cau x WHEEL_GAIN trong config.py; ap dung ca lenh quay.
-Lenh quay dung PWM co dinh {TURN_SPEED:.0%}, khong nhan PWM rieng.
-Goc quay chi UOC LUONG theo thoi gian; can hieu chinh he so trong config.py.
-Nang/ha dung GPIO BCM {SERVO_BCM_PIN}; can dat tay o vi tri ha {SERVO_START_ANGLE:g} do truoc khi khoi dong.
-Nang/ha mac dinh {SERVO_MOVE_SECONDS:g} giay, toi thieu {SERVO_MIN_MOVE_SECONDS:g} giay; dung kernel pwm-gpio BCM 18.
-Nang/ha {'da khai bao hieu chinh' if SERVO_CALIBRATED else 'che do thu: da cho phep chay, hai moc xung chua do tren xe'}.
-Cang dung GPIO BCM {CLAW_BCM_PIN}; can de cang khep {CLAW_START_ANGLE:g} do truoc khi khoi dong.
-Cang dung PWM phan cung BCM 12; can cau hinh overlay theo README truoc khi chay that.
-Mo/dong cang chia buoc goc trong {CLAW_MOVE_SECONDS:g} giay mac dinh, toi thieu {CLAW_MIN_MOVE_SECONDS:g} giay.
-Sau do cho {CLAW_SETTLE_SECONDS:g} giay de phat goc cuoi; chua do duoc toc do co cau that.
-Tay nang/ha {'giu PWM' if SERVO_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc'}; cang {'giu PWM' if CLAW_HOLD_POSITION else 'tat PWM sau moi lenh, khong giu luc kep lien tuc'}.
-Thoat/Ctrl+C se tat PWM cac servo.
-Enter chi luu lenh. Nhap du cac dong roi go chay va nhan Enter.
-Chay xong thi xoa danh sach. Co the nhap kich ban moi.
-Khi dang chay, nhan Ctrl+C de dung va thoat.
 """
 
 
