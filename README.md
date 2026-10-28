@@ -19,6 +19,8 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `test_displays.py` | Thử LED 7 đoạn và ma trận; hiển thị chữ tĩnh/chạy chữ hoặc nhập nội dung qua terminal |
 | `seven_segment.py` | API LED 4 số; nhập số và chuyển sang hiển thị khoảng cách bằng lệnh `auto` |
 | `display_link.py` | Giao thức CLK/DATA dùng chung cho TM1637 và TM1640 |
+| `scratch_parser.py` | Parse marker/block ID và lệnh Scratch tuần tự thành dữ liệu đã kiểm tra |
+| `scratch_receiver.py` | Nhận MQTT hoặc đọc file; chỉ in bản parse/preview, chưa thực thi |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
@@ -30,6 +32,74 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `tests/test_claw.py` | Kiểm tra hai chân servo, chiều mở/khép càng, chuyển góc từng bước và dọn cả hai servo |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
+
+## Nhận và parse code Scratch qua MQTT
+
+Giai đoạn hiện tại **chỉ nhận, parse và in kịch bản**, không thực thi Python
+nhận được, không mở motor/GPIO/serial và không gửi tiến độ giả. FE/BE không
+được chỉnh trong thay đổi này; runner thực thi phần cứng là bước sau.
+
+Đứng trong `vehicle_testing`, thử ngay file mẫu (không cần FE, BE hay MQTT):
+
+```sh
+python3 scratch_receiver.py --file examples/scratch_sample.txt
+```
+
+File mẫu là đoạn người dùng đã cung cấp: **7 marker và 6 lệnh**. Kết quả giữ
+đúng thứ tự và block ID, bao gồm marker bắt đầu không có hành động ngay sau
+nó và hai lệnh lùi giống nhau. Mỗi lệnh gắn block ID gần nhất phía trước;
+nếu chưa có marker thì block ID là `None`. Log ghi cả số dòng nguồn.
+
+Để nhận trực tiếp từ backend qua broker MQTT TCP hiện có, cài dependency
+trong môi trường Python đang dùng trên Pi rồi khởi động receiver:
+
+```sh
+python3 -m pip install -r requirements-mqtt.txt
+python3 scratch_receiver.py --broker IP_BROKER --device-id UUID_THIET_BI
+```
+
+Thay `IP_BROKER` bằng IP/hostname của broker (không kèm `tcp://`); thay
+`UUID_THIET_BI` bằng **đúng UUID robot đang chọn trên web**, không tự đổi
+`robot001` thành `robot-001`. Có thể truyền `--port`, mặc định là 1883.
+Nếu chạy từ thư mục cha thì dùng `python3 -m vehicle_testing.scratch_receiver`
+và cùng các tham số. Bản này dùng MQTT TCP, chưa cấu hình tài khoản/TLS.
+
+Luồng kiểm tra:
+
+1. Chạy receiver và chờ thông báo subscribe thành công.
+2. Trên FE, Upload code. BE gửi tới `device/<UUID>/code`; Pi parse ngay và
+   in từng marker/lệnh. Upload sai cú pháp, lệnh hoặc UTF-8 sẽ xóa bản đang
+   chờ và báo lỗi có số dòng.
+3. Bấm Run. BE gửi chuỗi `execute` tới `device/<UUID>/execute`; receiver in
+   lại **PREVIEW EXECUTE** của bản hợp lệ gần nhất. Motor/LED chưa chạy.
+4. Heartbeat mỗi giây chỉ gửi `idle` lên `device/<UUID>/status`. Không gửi
+   `executing`, `done` hay `/block` vì đây chưa phải lượt chạy thật.
+5. Mất kết nối sẽ xóa bản đang chờ; sau khi kết nối lại cần Upload lại.
+   Execute retained và payload execute khác chuỗi `execute` được bỏ qua.
+   Ctrl+C đóng receiver và kết nối MQTT.
+
+Các dạng được hỗ trợ:
+
+| Dạng | Ý nghĩa trong parser |
+| --- | --- |
+| `report_block("id")` | Marker tiến độ, giữ nguyên ID |
+| `robot.sendCmd("move_forward:5")` | Tiến 5 **giây** |
+| `robot.sendCmd("move_backward:2")` | Lùi 2 **giây** |
+| `robot.sendCmd("turn_left:180")` / `turn_right:90` | Quay theo **độ** |
+| `robot.sendCmd("led_strip:văn:bản")` | Chuỗi gốc `văn:bản`, chỉ tách dấu `:` đầu tiên |
+
+Tham số số phải dương và hữu hạn; hỗ trợ số thập phân. Text không bị bỏ
+dấu/đổi chữ trong parser. Việc chuẩn hóa font thuộc bước hiển thị sau này.
+Chỉ nhận lời gọi có một chuỗi cố định, chưa hỗ trợ biến, vòng lặp, điều kiện,
+import, hàm tùy ý hay biểu thức tính toán. Bản preview giới hạn nguồn
+**64 KiB UTF-8 và 1000 sự kiện**; backend hiện cho phép payload lớn hơn nên
+receiver có thể từ chối một upload mà BE đã nhận.
+
+**Cần đồng bộ trước khi chạy thật:** block tiến/lùi trong dữ liệu BE hiện
+còn ghi `cm`, trong khi hợp đồng vừa thống nhất là giây. Listener status
+của BE cũng đang lấy UUID từ `parts[2]` thay vì `parts[1]` trong topic
+`device/<UUID>/status`; vì vậy kết quả online trên web chưa phải bằng chứng
+receiver không nhận được MQTT. Các điểm FE/BE này chưa được sửa ở bước parse.
 
 ## Nhập nội dung cho LED ma trận 16×8
 
