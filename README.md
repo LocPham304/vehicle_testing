@@ -21,6 +21,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `display_link.py` | Giao thức CLK/DATA dùng chung cho TM1637 và TM1640 |
 | `scratch_parser.py` | Parse marker/block ID và lệnh Scratch tuần tự thành dữ liệu đã kiểm tra |
 | `scratch_receiver.py` | Nhận MQTT hoặc đọc file; chỉ in bản parse/preview, chưa thực thi |
+| `scratch_runner.py` | Chạy file kịch bản Scratch cục bộ qua motor và LED ma trận; có `--dry-run` |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
@@ -33,11 +34,55 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
+## Chạy kịch bản Scratch có sẵn trên Pi
+
+Đứng trong thư mục `vehicle_testing`, dùng môi trường Python đã chạy được
+motor và LED trước đó:
+
+```sh
+python3 scratch_runner.py
+```
+
+Lệnh này **điều khiển phần cứng thật**, đọc mặc định file
+`examples/scratch_sample.txt` theo vị trí chương trình, không cần MQTT,
+UUID, FE hoặc BE. Chương trình kiểm tra toàn bộ cú pháp/lệnh/font trước
+khi mở thiết bị, sau đó chạy một lượt:
+
+1. Tiến 2 giây, dừng motor.
+2. Quay trái 180° theo hệ số thời gian trong `config.py`, dừng motor.
+3. Lùi 2 giây, dừng motor; tiếp tục lùi 2 giây rồi dừng motor.
+4. LED ma trận chạy chữ `FFFFFFFFFFF` một lượt, sau đó `VAN BAN` một lượt.
+5. Tắt LED và giải phóng kết nối motor/GPIO.
+
+`report_block` được ghi vào terminal theo đúng thứ tự, chưa gửi lên web.
+Tiến/lùi dùng PWM mặc định và hệ số bánh hiện có; góc quay là ước lượng,
+chưa có cảm biến góc. LED dùng BCM7/BCM5, độ sáng 2, cùng font với
+`test_displays.py`: tiếng Việt được bỏ dấu và đổi thành chữ hoa. Chữ dài
+cuộn một lượt, chờ 0,1 giây giữa các khung; chữ ngắn giữ 1 giây.
+Nhấn **Ctrl+C** để yêu cầu dừng motor, tắt LED và thoát. Chạy riêng runner,
+không mở đồng thời các chương trình khác đang điều khiển cùng motor/GPIO.
+
+Thử luồng trên máy tính mà không mở phần cứng hoặc chờ thời gian:
+
+```sh
+python3 scratch_runner.py --dry-run
+```
+
+Chỉnh kịch bản trong `examples/scratch_sample.txt`, hoặc chọn file khác:
+
+```sh
+python3 scratch_runner.py --file examples/scratch_sample.txt
+```
+
+Từ thư mục cha dùng `python3 -m vehicle_testing.scratch_runner` với cùng
+tham số. Runner chỉ ánh xạ các lệnh đã parse sang API điều khiển sẵn có,
+không dùng `exec`/`eval` để thực thi Python trong file.
+
 ## Nhận và parse code Scratch qua MQTT
 
-Giai đoạn hiện tại **chỉ nhận, parse và in kịch bản**, không thực thi Python
+Receiver MQTT hiện tại **chỉ nhận, parse và in kịch bản**, không thực thi Python
 nhận được, không mở motor/GPIO/serial và không gửi tiến độ giả. FE/BE không
-được chỉnh trong thay đổi này; runner thực thi phần cứng là bước sau.
+được chỉnh trong thay đổi này; receiver chưa nối với runner cục bộ ở trên.
 
 Đứng trong `vehicle_testing`, thử ngay file mẫu (không cần FE, BE hay MQTT):
 
