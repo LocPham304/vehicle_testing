@@ -20,7 +20,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `seven_segment.py` | API LED 4 số; nhập số và chuyển sang hiển thị khoảng cách bằng lệnh `auto` |
 | `display_link.py` | Giao thức CLK/DATA dùng chung cho TM1637 và TM1640 |
 | `scratch_parser.py` | Parse marker/block ID và lệnh Scratch tuần tự thành dữ liệu đã kiểm tra |
-| `scratch_receiver.py` | Nhận MQTT hoặc đọc file; chỉ in bản parse/preview, chưa thực thi |
+| `scratch_receiver.py` | Nhận MQTT; preview mặc định, `--run` chạy motor/LED, `--dry-run` chạy mô phỏng |
 | `scratch_runner.py` | Chạy file kịch bản Scratch cục bộ qua motor và LED ma trận; có `--dry-run` |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
@@ -78,11 +78,12 @@ Từ thư mục cha dùng `python3 -m vehicle_testing.scratch_runner` với cùn
 tham số. Runner chỉ ánh xạ các lệnh đã parse sang API điều khiển sẵn có,
 không dùng `exec`/`eval` để thực thi Python trong file.
 
-## Nhận và parse code Scratch qua MQTT
+## Nhận và chạy code Scratch qua MQTT
 
-Receiver MQTT hiện tại **chỉ nhận, parse và in kịch bản**, không thực thi Python
-nhận được, không mở motor/GPIO/serial và không gửi tiến độ giả. FE/BE không
-được chỉnh trong thay đổi này; receiver chưa nối với runner cục bộ ở trên.
+Receiver mặc định **chỉ nhận, parse và in kịch bản**. Thêm `--run` để `/execute`
+chạy motor/LED qua runner; thêm `--dry-run` để thử cùng luồng bằng đầu ra mô phỏng,
+không mở phần cứng và không chờ thời gian chuyển động/cuộn chữ. Ba chế độ đều
+parse dữ liệu, không thực thi Python tùy ý bằng `exec`/`eval`. FE/BE chưa được sửa.
 
 Đứng trong `vehicle_testing`, thử ngay file mẫu (không cần FE, BE hay MQTT):
 
@@ -109,7 +110,7 @@ Thay `IP_BROKER` bằng IP/hostname của broker (không kèm `tcp://`); thay
 Nếu chạy từ thư mục cha thì dùng `python3 -m vehicle_testing.scratch_receiver`
 và cùng các tham số. Bản này dùng MQTT TCP, chưa cấu hình tài khoản/TLS.
 
-Luồng kiểm tra:
+Luồng kiểm tra ở chế độ preview mặc định:
 
 1. Chạy receiver và chờ thông báo subscribe thành công.
 2. Trên FE, Upload code. BE gửi tới `device/<UUID>/code`; Pi parse ngay và
@@ -122,6 +123,70 @@ Luồng kiểm tra:
 5. Mất kết nối sẽ xóa bản đang chờ; sau khi kết nối lại cần Upload lại.
    Execute retained và payload execute khác chuỗi `execute` được bỏ qua.
    Ctrl+C đóng receiver và kết nối MQTT.
+
+### Chạy kịch bản vừa nhận qua MQTT trên xe
+
+Sau khi cập nhật source, dừng receiver cũ bằng Ctrl+C và khởi động lại trong
+`vehicle_testing` trên Pi:
+
+```sh
+python3 scratch_receiver.py --broker 127.0.0.1 --device-id robot-001 --run
+```
+
+`--run` bật điều khiển phần cứng thật khi nhận `/execute`; lúc khởi động hoặc
+chỉ upload chưa mở motor/LED. Không chạy đồng thời runner riêng hay chương trình
+khác đang sở hữu cùng motor/GPIO. Broker có thể nằm trên Pi như lệnh trên,
+hoặc thay `127.0.0.1` bằng IP máy chạy broker.
+
+Từ laptop, giữ nguyên cách gửi MQTT đã thử thành công: gửi toàn bộ source
+tới `device/robot-001/code`, sau đó gửi `execute` tới
+`device/robot-001/execute`. Pi kiểm tra cú pháp, lệnh và font trước khi lưu;
+upload không hợp lệ xóa bản đang chờ, không chạy lại bản cũ. `/execute` giao
+chính bản đã nhận qua MQTT cho `execute_program()`, không đọc file mẫu.
+
+Mỗi lúc chỉ có một luồng thực thi. Upload mới trong lúc chạy chuẩn bị bản
+cho lần kế tiếp; lượt đang chạy giữ nguyên bản riêng. Execute khi đang bận
+bị bỏ qua, không xếp hàng. Execute retained hoặc MQTT đánh dấu `dup` bị bỏ qua;
+hai lần gửi mới sau khi đã hoàn tất vẫn là hai yêu cầu chạy riêng.
+
+Dừng từ PowerShell trên laptop (đã cài `paho-mqtt`, thay IP bằng IP Pi thực tế):
+
+```powershell
+python -c "from paho.mqtt.publish import single; single('device/robot-001/stop', 'stop', hostname='192.168.1.40', qos=1)"
+```
+
+Hoặc trên máy có `mosquitto_pub`:
+
+```sh
+mosquitto_pub -h 192.168.1.40 -q 1 -t 'device/robot-001/stop' -m 'stop'
+```
+
+Topic `/stop` chỉ nhận chuỗi `stop` mới, không retained và không đánh dấu `dup`.
+Luồng thực thi dùng thời gian chờ có thể ngắt cho cả motor và LED; sau yêu cầu
+dừng sẽ gửi lệnh dừng motor, tắt LED và giải phóng thiết bị. Ctrl+C cũng yêu cầu
+dừng và chờ giải phóng trước khi đóng MQTT. Khi MQTT phát hiện mất kết nối,
+chương trình yêu cầu dừng và xóa bản đang chờ; kết nối lại cần upload lại.
+Phát hiện mất mạng phụ thuộc keepalive MQTT, không phải dừng tức thì ngay khi
+Wi-Fi rớt. Các thao tác I²C/GPIO bị kẹt vẫn có thể trì hoãn việc dừng.
+
+Trạng thái trên `device/robot-001/status`:
+
+| Payload | Ý nghĩa |
+| --- | --- |
+| `idle` | Heartbeat khi không chạy |
+| `executing` | Đang thực thi, tiếp tục heartbeat mỗi giây |
+| `done` | Hoàn tất và đã giải phóng thiết bị |
+| `stopped` | Dừng theo yêu cầu và đã giải phóng thiết bị |
+| `error` | Lỗi thực thi hoặc giải phóng, xem log trên Pi |
+
+`done`/`stopped`/`error` được gửi một lần khi kết thúc; heartbeat sau đó trở lại
+`idle`. `report_block` hiện ghi vào terminal, chưa đẩy highlight lên web. BE hiện
+chỉ xử lý `idle`/`executing`/`done`, chưa xử lý `stopped`/`error`; lỗi lấy UUID
+trong listener BE ở bên dưới vẫn cần sửa để trạng thái web cập nhật đúng.
+
+Để thử bằng mô phỏng, thay `--run` bằng `--dry-run`. Không thêm cả hai cùng lúc.
+Kịch bản chỉ giữ trong RAM, không tự chạy lại khi khởi động. Thay đổi này chưa
+cài dịch vụ tự khởi động cùng Pi.
 
 Các dạng được hỗ trợ:
 
@@ -140,7 +205,7 @@ import, hàm tùy ý hay biểu thức tính toán. Bản preview giới hạn n
 **64 KiB UTF-8 và 1000 sự kiện**; backend hiện cho phép payload lớn hơn nên
 receiver có thể từ chối một upload mà BE đã nhận.
 
-**Cần đồng bộ trước khi chạy thật:** block tiến/lùi trong dữ liệu BE hiện
+**Cần đồng bộ trước khi chạy từ FE/BE:** block tiến/lùi trong dữ liệu BE hiện
 còn ghi `cm`, trong khi hợp đồng vừa thống nhất là giây. Listener status
 của BE cũng đang lấy UUID từ `parts[2]` thay vì `parts[1]` trong topic
 `device/<UUID>/status`; vì vậy kết quả online trên web chưa phải bằng chứng

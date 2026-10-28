@@ -25,6 +25,18 @@ DEFAULT_FILE = Path(__file__).resolve().parent / "examples" / "scratch_sample.tx
 logger = logging.getLogger(__name__)
 
 
+class ExecutionCancelled(Exception):
+    """A requested stop, distinct from a hardware failure."""
+
+
+def cancellable_sleep(stop_event):
+    """Wake timed motor/LED waits immediately when the owner requests stop."""
+    def sleep(seconds):
+        if stop_event.wait(seconds):
+            raise ExecutionCancelled("Da yeu cau dung kich ban.")
+    return sleep
+
+
 def validate_program(program):
     """Check every text glyph before any movement or hardware initialization."""
     for event in program.events:
@@ -88,10 +100,10 @@ class DryRunMatrix:
         logger.info("[MO PHONG] LED MATRIX: %r -> %s (mot luot)", text, normalized or "(xoa)")
 
 
-def open_motor():
+def open_motor(*, sleeper=time.sleep):
     output = PCA9685Output()
     try:
-        return MotorController(output)
+        return MotorController(output, sleeper=sleeper)
     except BaseException:
         output.close()
         raise
@@ -101,7 +113,7 @@ def report_block(block_id):
     logger.info("BLOCK: %r", block_id)
 
 
-def run_program(program, motor, matrix, reporter=report_block):
+def run_program(program, motor, matrix, reporter=report_block, *, stop_event=None):
     """Dispatch validated data in order; always request a motor stop on exit.
 
     Resource ownership belongs to the caller. No received Python is evaluated.
@@ -109,6 +121,8 @@ def run_program(program, motor, matrix, reporter=report_block):
     validate_program(program)
     try:
         for event in program.events:
+            if stop_event is not None and stop_event.is_set():
+                raise ExecutionCancelled("Da yeu cau dung kich ban.")
             if isinstance(event, BlockMarker):
                 reporter(event.block_id)
                 continue
@@ -130,6 +144,34 @@ def run_program(program, motor, matrix, reporter=report_block):
             motor.stop()
 
 
+def execute_program(program, *, dry_run=False, stop_event=None, reporter=report_block):
+    """Own all hardware for one parsed program; also usable by the MQTT worker."""
+    validate_program(program)
+    sleep = cancellable_sleep(stop_event) if stop_event is not None else time.sleep
+    if stop_event is not None:
+        sleep(0)
+    needs_motor = any(not isinstance(event, BlockMarker) and event.command != "led_strip" for event in program.events)
+    needs_matrix = any(not isinstance(event, BlockMarker) and event.command == "led_strip" for event in program.events)
+    with ExitStack() as resources:
+        motor = matrix = None
+        if needs_motor:
+            if dry_run:
+                motor = MotorController(DryRunOutput(), sleeper=lambda seconds: None)
+            else:
+                motor = open_motor(sleeper=sleep) if stop_event is not None else open_motor()
+            resources.callback(motor.close)
+            motor.stop()
+        if stop_event is not None:
+            sleep(0)
+        if needs_matrix:
+            if dry_run:
+                matrix = DryRunMatrix()
+            else:
+                matrix = MatrixTextDisplay(sleeper=sleep) if stop_event is not None else MatrixTextDisplay()
+                resources.callback(matrix.close)
+        run_program(program, motor, matrix, reporter, stop_event=stop_event)
+
+
 def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -143,22 +185,7 @@ def main(argv=None):
         validate_program(program)
         print(f"KICH BAN HOP LE: {program.marker_count} block marker, {program.command_count} lenh.", flush=True)
         logger.info("%s; file=%s", "MO PHONG - KHONG MO PHAN CUNG" if args.dry_run else "CHAY PHAN CUNG - Ctrl+C de dung", args.file)
-        needs_motor = any(not isinstance(event, BlockMarker) and event.command != "led_strip" for event in program.events)
-        needs_matrix = any(not isinstance(event, BlockMarker) and event.command == "led_strip" for event in program.events)
-        with ExitStack() as resources:
-            motor = matrix = None
-            if needs_motor:
-                motor = (MotorController(DryRunOutput(), sleeper=lambda seconds: None)
-                         if args.dry_run else open_motor())
-                resources.callback(motor.close)
-                motor.stop()
-            if needs_matrix:
-                if args.dry_run:
-                    matrix = DryRunMatrix()
-                else:
-                    matrix = MatrixTextDisplay()
-                    resources.callback(matrix.close)
-            run_program(program, motor, matrix)
+        execute_program(program, dry_run=args.dry_run)
         logger.info("HOAN TAT kich ban; da dong thiet bi.")
         return 0
     except KeyboardInterrupt:
