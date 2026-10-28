@@ -16,6 +16,7 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `hand.py` | Nâng/hạ BCM 18 qua kernel pwm-gpio; càng BCM 12 dùng PWM phần cứng |
 | `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
 | `ultrasonic.py` | Đọc cảm biến siêu âm TRIG/ECHO, timeout và giải phóng riêng GPIO cảm biến |
+| `test_displays.py` | Thử LED 7 đoạn và ma trận; hiển thị chữ tĩnh/chạy chữ hoặc nhập nội dung qua terminal |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
@@ -27,6 +28,45 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `tests/test_claw.py` | Kiểm tra hai chân servo, chiều mở/khép càng, chuyển góc từng bước và dọn cả hai servo |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
+
+## Nhập nội dung cho LED ma trận 16×8
+
+Chạy riêng chương trình test trên Raspberry Pi. Từ thư mục gốc:
+
+```sh
+python3 vehicle_testing/test_displays.py --target matrix --interactive
+```
+
+Nếu terminal đang ở ngay trong `vehicle_testing`, dùng:
+
+```sh
+python3 test_displays.py --target matrix --interactive
+```
+
+Tại dấu nhắc `Nhap noi dung>`, nhập nội dung rồi Enter. Có thể nhập nội dung
+mới khi chữ cũ đang chạy. Ví dụ `Xin chào đèn` sẽ thành `XIN CHAO DEN`.
+Enter trống xóa màn hình; nhập `thoat`, Ctrl+D (EOF) hoặc Ctrl+C để thoát.
+Chương trình gửi lệnh tắt LED và dọn riêng GPIO đã dùng khi kết thúc.
+
+Font hỗ trợ A–Z, 0–9, khoảng trắng và các dấu `.,!?':;+-/=()_`. Chữ thường
+đổi thành chữ hoa, tiếng Việt bỏ dấu (kể cả đ/Đ). Ký tự chưa có font được báo
+rõ và giữ nguyên nội dung đang hiển thị. Nội dung vừa 16 cột sẽ đứng yên ở
+giữa; nội dung dài hơn chạy từ phải sang trái và lặp lại. Cách vẽ hiện dùng
+bit 0 làm hàng trên cùng; chiều hiển thị thực tế tùy cách lắp ma trận.
+
+Để truyền nội dung ngay khi chạy, hoặc dùng lại mẫu HELLO:
+
+```sh
+python3 vehicle_testing/test_displays.py --target matrix --text "Xin chào robot 123!"
+python3 vehicle_testing/test_displays.py --target matrix --hello
+```
+
+Các chế độ chữ chỉ áp dụng cho ma trận (`--target matrix` hoặc `both`). Chạy
+không có chế độ chữ vẫn giữ mẫu `OK` và số `1234` như trước. Mặc định ma trận
+dùng SCLK **BCM7**, DIN **BCM5** theo code cũ; đổi bằng `--matrix-clk` và
+`--matrix-dio` theo dây thực tế. BCM7 phải rảnh, không được SPI0 hoặc chương
+trình khác sử dụng đồng thời. Chế độ nhập liên tục dùng terminal Linux/SSH;
+chương trình test không mở motor hoặc servo.
 
 ## Đọc cảm biến siêu âm riêng
 

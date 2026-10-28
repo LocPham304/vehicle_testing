@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Standalone LED test. Run inside vehicle_testing: python3 test_displays.py.
 Scroll HELLO: python3 test_displays.py --target matrix --hello
+Enter text: python3 test_displays.py --target matrix --interactive
 
 Defaults are from pi4-source test scripts, not a verified wiring diagram:
 TM1637 CLK=BCM16, DIO=BCM6; TM1640 SCLK=BCM7, DIN=BCM5.
@@ -9,35 +10,143 @@ GPIO7 also belongs to SPI0; it must be free. Run this test on its own.
 """
 
 import argparse
+import select
 import sys
 import time
+import unicodedata
 
 
 DIGITS = (0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F)
 MATRIX_OK = (0, 0, 0x3E, 0x41, 0x41, 0x41, 0x3E, 0, 0,
              0x7F, 0x08, 0x14, 0x22, 0x41, 0, 0)
 
+# Five-column, seven-row glyphs. Bit 0 is the top row.
+FONT = {
+    "A": (0x7E, 0x11, 0x11, 0x11, 0x7E),
+    "B": (0x7F, 0x49, 0x49, 0x49, 0x36),
+    "C": (0x3E, 0x41, 0x41, 0x41, 0x22),
+    "D": (0x7F, 0x41, 0x41, 0x22, 0x1C),
+    "E": (0x7F, 0x49, 0x49, 0x49, 0x41),
+    "F": (0x7F, 0x09, 0x09, 0x09, 0x01),
+    "G": (0x3E, 0x41, 0x49, 0x49, 0x7A),
+    "H": (0x7F, 0x08, 0x08, 0x08, 0x7F),
+    "I": (0, 0x41, 0x7F, 0x41, 0),
+    "J": (0x20, 0x40, 0x41, 0x3F, 0x01),
+    "K": (0x7F, 0x08, 0x14, 0x22, 0x41),
+    "L": (0x7F, 0x40, 0x40, 0x40, 0x40),
+    "M": (0x7F, 0x02, 0x0C, 0x02, 0x7F),
+    "N": (0x7F, 0x04, 0x08, 0x10, 0x7F),
+    "O": (0x3E, 0x41, 0x41, 0x41, 0x3E),
+    "P": (0x7F, 0x09, 0x09, 0x09, 0x06),
+    "Q": (0x3E, 0x41, 0x51, 0x21, 0x5E),
+    "R": (0x7F, 0x09, 0x19, 0x29, 0x46),
+    "S": (0x46, 0x49, 0x49, 0x49, 0x31),
+    "T": (0x01, 0x01, 0x7F, 0x01, 0x01),
+    "U": (0x3F, 0x40, 0x40, 0x40, 0x3F),
+    "V": (0x1F, 0x20, 0x40, 0x20, 0x1F),
+    "W": (0x3F, 0x40, 0x38, 0x40, 0x3F),
+    "X": (0x63, 0x14, 0x08, 0x14, 0x63),
+    "Y": (0x07, 0x08, 0x70, 0x08, 0x07),
+    "Z": (0x61, 0x51, 0x49, 0x45, 0x43),
+    "0": (0x3E, 0x51, 0x49, 0x45, 0x3E),
+    "1": (0, 0x42, 0x7F, 0x40, 0),
+    "2": (0x42, 0x61, 0x51, 0x49, 0x46),
+    "3": (0x21, 0x41, 0x45, 0x4B, 0x31),
+    "4": (0x18, 0x14, 0x12, 0x7F, 0x10),
+    "5": (0x27, 0x45, 0x45, 0x45, 0x39),
+    "6": (0x3C, 0x4A, 0x49, 0x49, 0x30),
+    "7": (0x01, 0x71, 0x09, 0x05, 0x03),
+    "8": (0x36, 0x49, 0x49, 0x49, 0x36),
+    "9": (0x06, 0x49, 0x49, 0x29, 0x1E),
+    " ": (0, 0, 0),
+    ".": (0, 0x60, 0x60), ",": (0x40, 0x30),
+    "!": (0, 0, 0x5F, 0, 0), "?": (0x02, 0x01, 0x51, 0x09, 0x06),
+    "'": (0, 0x03, 0), ":": (0, 0x36, 0x36, 0), ";": (0x40, 0x36),
+    "+": (0x08, 0x08, 0x3E, 0x08, 0x08), "-": (0x08, 0x08, 0x08),
+    "/": (0x20, 0x10, 0x08, 0x04, 0x02), "=": (0x14, 0x14, 0x14),
+    "(": (0, 0x1C, 0x22, 0x41), ")": (0x41, 0x22, 0x1C, 0),
+    "_": (0x40, 0x40, 0x40, 0x40, 0x40),
+}
 
-def hello_frames():
-    """Slide 5x7 HELLO columns right-to-left across a 16-column display.
 
-    Bit 0 is the top row; the eighth row stays blank. Physical orientation
-    depends on how the matrix is mounted.
-    """
-    font = {
-        "H": (0x7F, 0x08, 0x08, 0x08, 0x7F),
-        "E": (0x7F, 0x49, 0x49, 0x49, 0x41),
-        "L": (0x7F, 0x40, 0x40, 0x40, 0x40),
-        "O": (0x3E, 0x41, 0x41, 0x41, 0x3E),
-    }
+def text_columns(text):
+    """Return uppercase unaccented text and its columns; reject unknown glyphs."""
+    text = text.strip().replace("đ", "d").replace("Đ", "D")
+    text = "".join(char for char in unicodedata.normalize("NFD", text)
+                   if unicodedata.category(char) != "Mn").upper()
+    missing = sorted(set(text) - FONT.keys())
+    if missing:
+        raise ValueError("Ky tu chua co font: " + " ".join(repr(char) for char in missing))
     columns = []
-    for index, letter in enumerate("HELLO"):
+    for index, char in enumerate(text):
         if index:
             columns.append(0)
-        columns.extend(font[letter])
-    strip = [0] * 16 + columns + [0] * 16
+        columns.extend(FONT[char])
+    return text, columns
+
+
+def text_frames(columns):
+    """Center short text; scroll longer text into and out of a 16x8 frame."""
+    if len(columns) <= 16:
+        left = (16 - len(columns)) // 2
+        yield [0] * left + list(columns) + [0] * (16 - left - len(columns))
+        return
+    strip = [0] * 16 + list(columns) + [0] * 16
     for offset in range(len(strip) - 16 + 1):
         yield strip[offset:offset + 16]
+
+
+def hello_frames():
+    """Preserve the original HELLO test using the shared renderer."""
+    yield from text_frames(text_columns("HELLO")[1])
+
+
+def read_line(timeout):
+    """Poll Linux/SSH stdin without blocking the scrolling animation."""
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if not ready:
+        return None
+    line = sys.stdin.readline()
+    if not line:
+        raise EOFError
+    return line.rstrip("\r\n")
+
+
+def run_matrix(display, columns, interactive=False):
+    frames = iter(text_frames(columns))
+    redraw = True
+    if interactive:
+        print("Nhap chu; Enter trong de xoa; go thoat hoac Ctrl+C de dung.")
+        print("Nhap noi dung> ", end="", flush=True)
+    while True:
+        if redraw:
+            try:
+                frame = next(frames)
+            except StopIteration:
+                frames = iter(text_frames(columns))
+                frame = next(frames)
+            display.write_frame(frame)
+            redraw = len(columns) > 16
+        if interactive:
+            try:
+                line = read_line(0.1)
+            except EOFError:
+                return
+            if line is not None:
+                if line.strip().lower() == "thoat":
+                    return
+                try:
+                    text, replacement = text_columns(line)
+                except ValueError as error:
+                    print(f"{error}. Giu nguyen noi dung cu.")
+                else:
+                    columns = replacement
+                    frames = iter(text_frames(columns))
+                    redraw = True
+                    print(f"Hien thi: {text or '(trong)'}")
+                print("Nhap noi dung> ", end="", flush=True)
+        else:
+            time.sleep(0.1 if redraw else 1)
 
 
 class DisplayLink:
@@ -100,9 +209,13 @@ class DisplayLink:
 
     def show(self, frame, brightness):
         self.send([0x80])  # Disable while loading a known frame.
+        self.write_frame(frame)
+        self.send([0x88 | brightness])  # Display on, brightness 0..7.
+
+    def write_frame(self, frame):
+        """Update RAM while keeping the display enabled between frames."""
         self.send([0x40])  # Write data, increment address automatically.
         self.send([0xC0, *frame])
-        self.send([0x88 | brightness])  # Display on, brightness 0..7.
 
 
 def main(argv=None):
@@ -114,12 +227,22 @@ def main(argv=None):
     parser.add_argument("--matrix-dio", type=int, default=5, help="GPIO BCM DIN cua ma tran")
     parser.add_argument("--number", type=int, default=1234, help="So hien thi 0..9999")
     parser.add_argument("--brightness", type=int, choices=range(8), default=2)
-    parser.add_argument("--hello", action="store_true", help="Chay chu HELLO tren ma tran 16x8")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--hello", action="store_true", help="Chay chu HELLO tren ma tran 16x8")
+    mode.add_argument("--text", help="Noi dung hien thi tren ma tran (tieng Viet se bo dau)")
+    mode.add_argument("--interactive", action="store_true", help="Nhap noi dung lien tuc tu terminal Linux/SSH")
     args = parser.parse_args(argv)
     if not 0 <= args.number <= 9999:
         parser.error("So hien thi phai trong khoang 0..9999.")
-    if args.hello and args.target == "7seg":
-        parser.error("--hello can --target matrix hoac both.")
+    matrix_mode = args.hello or args.interactive or args.text is not None
+    if matrix_mode and args.target == "7seg":
+        parser.error("Che do chu can --target matrix hoac both.")
+    initial_text, columns = "", []
+    if args.hello or args.text is not None:
+        try:
+            initial_text, columns = text_columns("HELLO" if args.hello else args.text)
+        except ValueError as error:
+            parser.error(str(error))
 
     selected = []
     if args.target in ("7seg", "both"):
@@ -151,23 +274,19 @@ def main(argv=None):
                 frame = [DIGITS[int(digit)] for digit in f"{args.number:04d}"]
             else:
                 matrix_display = display
-                frame = [0] * 16 if args.hello else MATRIX_OK
+                frame = [0] * 16 if matrix_mode else MATRIX_OK
             display.show(frame, args.brightness)
             expected = f"{args.number:04d}" if ack else (
-                "HELLO (chay chu)" if args.hello else "OK (co the xoay/nguoc tuy cach lap)"
+                (initial_text or "(nhap tai terminal)") if matrix_mode else "OK (co the xoay/nguoc tuy cach lap)"
             )
             print(f"{name}: CLK=BCM{clk}, DATA=BCM{dio}; da gui hinh {expected}.", flush=True)
             if display.missing_ack:
                 print("CANH BAO: TM1637 khong ACK day du; kiem tra nguon, chan CLK/DIO va day.", flush=True)
         print("Quan sat LED thuc te de xac nhan. Nhan Ctrl+C de tat va thoat.", flush=True)
-        while True:
-            if args.hello:
-                for frame in hello_frames():
-                    # Keep the display enabled between scrolling frames.
-                    matrix_display.send([0x40])
-                    matrix_display.send([0xC0, *frame])
-                    time.sleep(0.1)
-            else:
+        if matrix_mode:
+            run_matrix(matrix_display, columns, interactive=args.interactive)
+        else:
+            while True:
                 time.sleep(1)
     except KeyboardInterrupt:
         print("\nDang tat LED...")
