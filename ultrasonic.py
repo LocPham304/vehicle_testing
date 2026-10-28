@@ -1,6 +1,7 @@
 """Read a TRIG/ECHO ultrasonic sensor without opening motor or servo hardware.
 
 Run from the repository root: python3 -m vehicle_testing.ultrasonic
+Or inside vehicle_testing: python3 ultrasonic.py
 Each read returns raw centimeters or raises TimeoutError; it does not stop motors.
 Callers should space readings apart (the CLI uses 0.2 seconds between readings).
 """
@@ -12,8 +13,13 @@ import math
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 
-from .config import (
+# Match main.py: support both direct script execution and package imports.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from vehicle_testing.config import (
     ULTRASONIC_ECHO_PIN,
     ULTRASONIC_READ_INTERVAL_SECONDS,
     ULTRASONIC_TIMEOUT_SECONDS,

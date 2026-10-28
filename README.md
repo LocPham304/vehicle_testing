@@ -37,6 +37,12 @@ là **BCM 11**, nguồn cảm biến OhStem **3,3 V** và GND chung:
 python3 -m vehicle_testing.ultrasonic
 ```
 
+Hoặc nếu terminal đang ở ngay trong thư mục `vehicle_testing`:
+
+```sh
+python3 ultrasonic.py
+```
+
 Nếu đấu GPIO khác, truyền `--trig 17 --echo 27` theo dây thực tế. Các chân
 phải đang rảnh; BCM 8/11 còn dùng cho SPI0. Không chạy đồng thời module này
 với `test_ultrasonic.py` vì chúng dùng cùng chân cảm biến.

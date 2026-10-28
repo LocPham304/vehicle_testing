@@ -74,6 +74,20 @@ class SensorGPIO:
 
 
 class ImportTests(unittest.TestCase):
+    def test_cli_runs_directly_inside_vehicle_folder_and_as_package(self):
+        for arguments, cwd in (
+            (["ultrasonic.py", "--help"], ROOT / "vehicle_testing"),
+            (["-m", "vehicle_testing.ultrasonic", "--help"], ROOT),
+        ):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(
+                    [sys.executable, "-B", *arguments], cwd=cwd,
+                    capture_output=True, text=True, timeout=10,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("--trig", result.stdout)
+                self.assertIn("--echo", result.stdout)
+
     def test_import_does_not_open_gpio_motor_or_servo_modules(self):
         result = subprocess.run(
             [sys.executable, "-B", "-c",
