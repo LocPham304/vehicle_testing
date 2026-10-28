@@ -2,6 +2,7 @@
 """Standalone LED test. Run inside vehicle_testing: python3 test_displays.py.
 Scroll HELLO: python3 test_displays.py --target matrix --hello
 Enter text: python3 test_displays.py --target matrix --interactive
+Enter numbers/auto: python3 test_displays.py --target 7seg --interactive
 
 Defaults are from pi4-source test scripts, not a verified wiring diagram:
 TM1637 CLK=BCM16, DIO=BCM6; TM1640 SCLK=BCM7, DIN=BCM5.
@@ -14,9 +15,16 @@ import select
 import sys
 import time
 import unicodedata
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from vehicle_testing.config import SEVEN_SEGMENT_CLK_PIN, SEVEN_SEGMENT_DIO_PIN
+from vehicle_testing.display_link import DisplayLink
+from vehicle_testing.seven_segment import DIGITS, main as seven_segment_main
 
 
-DIGITS = (0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F)
 MATRIX_OK = (0, 0, 0x3E, 0x41, 0x41, 0x41, 0x3E, 0, 0,
              0x7F, 0x08, 0x14, 0x22, 0x41, 0, 0)
 
@@ -149,80 +157,11 @@ def run_matrix(display, columns, interactive=False):
             time.sleep(0.1 if redraw else 1)
 
 
-class DisplayLink:
-    """Send the display's clock/data protocol, least significant bit first."""
-
-    def __init__(self, gpio, clk, dio, ack=False):
-        self.gpio, self.clk, self.dio = gpio, clk, dio
-        self.ack = ack
-        self.missing_ack = 0
-
-    def delay(self):
-        time.sleep(0.00001)
-
-    def start(self):
-        self.gpio.output(self.dio, 1)
-        self.gpio.output(self.clk, 1)
-        self.delay()
-        self.gpio.output(self.dio, 0)
-        self.delay()
-        self.gpio.output(self.clk, 0)
-
-    def stop(self):
-        self.gpio.output(self.clk, 0)
-        self.gpio.output(self.dio, 0)
-        self.delay()
-        self.gpio.output(self.clk, 1)
-        self.delay()
-        self.gpio.output(self.dio, 1)
-        self.delay()
-
-    def write_byte(self, value):
-        for bit in range(8):
-            self.gpio.output(self.clk, 0)
-            self.gpio.output(self.dio, (value >> bit) & 1)
-            self.delay()
-            self.gpio.output(self.clk, 1)
-            self.delay()
-        self.gpio.output(self.clk, 0)
-        # TM1637 has a ninth ACK clock; TM1640 does not.
-        if self.ack:
-            self.gpio.setup(self.dio, self.gpio.IN, pull_up_down=self.gpio.PUD_UP)
-            try:
-                self.delay()
-                self.gpio.output(self.clk, 1)
-                self.delay()
-                if self.gpio.input(self.dio):
-                    self.missing_ack += 1
-            finally:
-                self.gpio.output(self.clk, 0)
-                self.gpio.setup(self.dio, self.gpio.OUT, initial=self.gpio.LOW)
-            self.delay()
-
-    def send(self, values):
-        self.start()
-        try:
-            for value in values:
-                self.write_byte(value)
-        finally:
-            self.stop()
-
-    def show(self, frame, brightness):
-        self.send([0x80])  # Disable while loading a known frame.
-        self.write_frame(frame)
-        self.send([0x88 | brightness])  # Display on, brightness 0..7.
-
-    def write_frame(self, frame):
-        """Update RAM while keeping the display enabled between frames."""
-        self.send([0x40])  # Write data, increment address automatically.
-        self.send([0xC0, *frame])
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Bat thu LED 7 doan va ma tran, khong chay motor.")
     parser.add_argument("--target", choices=("7seg", "matrix", "both"), default="both")
-    parser.add_argument("--seg-clk", type=int, default=16, help="GPIO BCM CLK cua LED 7 doan")
-    parser.add_argument("--seg-dio", type=int, default=6, help="GPIO BCM DIO cua LED 7 doan")
+    parser.add_argument("--seg-clk", type=int, default=SEVEN_SEGMENT_CLK_PIN, help="GPIO BCM CLK cua LED 7 doan")
+    parser.add_argument("--seg-dio", type=int, default=SEVEN_SEGMENT_DIO_PIN, help="GPIO BCM DIO cua LED 7 doan")
     parser.add_argument("--matrix-clk", type=int, default=7, help="GPIO BCM SCLK cua ma tran")
     parser.add_argument("--matrix-dio", type=int, default=5, help="GPIO BCM DIN cua ma tran")
     parser.add_argument("--number", type=int, default=1234, help="So hien thi 0..9999")
@@ -230,10 +169,19 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--hello", action="store_true", help="Chay chu HELLO tren ma tran 16x8")
     mode.add_argument("--text", help="Noi dung hien thi tren ma tran (tieng Viet se bo dau)")
-    mode.add_argument("--interactive", action="store_true", help="Nhap noi dung lien tuc tu terminal Linux/SSH")
+    mode.add_argument("--interactive", action="store_true", help="Nhap chu cho matrix hoac so/auto cho 7seg")
+    mode.add_argument("--distance", action="store_true", help="LED 7 doan bat dau hien khoang cach sieu am")
     args = parser.parse_args(argv)
     if not 0 <= args.number <= 9999:
         parser.error("So hien thi phai trong khoang 0..9999.")
+    if args.distance and args.target != "7seg":
+        parser.error("--distance dung voi --target 7seg.")
+    if args.target == "7seg" and (args.interactive or args.distance):
+        options = ["--clk", str(args.seg_clk), "--dio", str(args.seg_dio),
+                   "--brightness", str(args.brightness), "--number", str(args.number)]
+        if args.distance:
+            options.append("--auto")
+        return seven_segment_main(options)
     matrix_mode = args.hello or args.interactive or args.text is not None
     if matrix_mode and args.target == "7seg":
         parser.error("Che do chu can --target matrix hoac both.")

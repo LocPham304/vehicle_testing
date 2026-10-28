@@ -18,6 +18,11 @@ ULTRASONIC_ECHO_PIN = 11
 ULTRASONIC_TIMEOUT_SECONDS = 0.03
 ULTRASONIC_READ_INTERVAL_SECONDS = 0.2
 
+# BCM pins from the existing standalone LED test.
+SEVEN_SEGMENT_CLK_PIN = 16
+SEVEN_SEGMENT_DIO_PIN = 6
+SEVEN_SEGMENT_BRIGHTNESS = 2
+
 # Trial wheel compensation requested by the user; 1.0 restores untrimmed PWM.
 # Applied to every wheel movement, including turns, in both motor directions.
 # Effective PWM = requested PWM * gain. Each gain must be in (0, 1].

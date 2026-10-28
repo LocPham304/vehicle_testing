@@ -17,6 +17,8 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
 | `ultrasonic.py` | Đọc cảm biến siêu âm TRIG/ECHO, timeout và giải phóng riêng GPIO cảm biến |
 | `test_displays.py` | Thử LED 7 đoạn và ma trận; hiển thị chữ tĩnh/chạy chữ hoặc nhập nội dung qua terminal |
+| `seven_segment.py` | API LED 4 số; nhập số và chuyển sang hiển thị khoảng cách bằng lệnh `auto` |
+| `display_link.py` | Giao thức CLK/DATA dùng chung cho TM1637 và TM1640 |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
@@ -61,12 +63,77 @@ python3 vehicle_testing/test_displays.py --target matrix --text "Xin chào robot
 python3 vehicle_testing/test_displays.py --target matrix --hello
 ```
 
-Các chế độ chữ chỉ áp dụng cho ma trận (`--target matrix` hoặc `both`). Chạy
+Các chế độ `--text`/`--hello` chỉ áp dụng cho ma trận (`--target matrix` hoặc `both`). Chạy
 không có chế độ chữ vẫn giữ mẫu `OK` và số `1234` như trước. Mặc định ma trận
 dùng SCLK **BCM7**, DIN **BCM5** theo code cũ; đổi bằng `--matrix-clk` và
 `--matrix-dio` theo dây thực tế. BCM7 phải rảnh, không được SPI0 hoặc chương
 trình khác sử dụng đồng thời. Chế độ nhập liên tục dùng terminal Linux/SSH;
 chương trình test không mở motor hoặc servo.
+
+## LED 7 đoạn: nhập số và tự cập nhật khoảng cách
+
+Trên Raspberry Pi, nếu terminal đang ở trong `vehicle_testing`, chạy:
+
+```sh
+python3 seven_segment.py
+```
+
+Hoặc từ thư mục cha dùng `python3 -m vehicle_testing.seven_segment`. LED bắt
+đầu ở `0000`, và chương trình chờ tại `led7>`:
+
+```text
+123       # Hiện 0123, chế độ nhập tay
+auto      # Mở cảm biến siêu âm và cập nhật khoảng cách
+456       # Đóng cảm biến, chuyển về nhập tay, hiện 0456
+thoat     # Tắt LED, đóng cảm biến nếu còn mở và thoát
+```
+
+Chỉ nhập nội dung trước dấu `#`; phần sau là giải thích. Enter trống xóa LED
+và rời chế độ auto. Ctrl+C hoặc EOF cũng thoát và dọn tài nguyên. Dữ liệu
+không hợp lệ giữ nguyên chế độ và nội dung cũ. Có thể nhập `auto` lại sau
+khi đã quay về thủ công.
+
+Mặc định CLK **BCM16**, DIO **BCM6**; cảm biến TRIG **BCM8**, ECHO **BCM11**.
+Tất cả là số BCM, độc lập với số kênh PCA9685. Có thể đổi theo dây thực tế
+bằng `--clk`, `--dio`, `--trig`, `--echo`. Chương trình từ chối mở cảm biến
+nếu chân cảm biến trùng chân LED. Chạy riêng các test dùng cùng GPIO.
+
+Chế độ auto nghỉ 0,2 giây sau mỗi lần đọc; có thể đổi bằng `--interval`.
+Khoảng cách làm tròn đến cm (27,5 thành 0028). Timeout, lỗi đọc hoặc giá trị
+không hiển thị được sẽ hiện `----` và tiếp tục thử; dữ liệu hợp lệ sau đó
+tự khôi phục. Không có chức năng điều khiển/dừng xe. LED hiển thị số chưa
+đồng nghĩa số đo đã được hiệu chuẩn với thước.
+
+```sh
+python3 seven_segment.py --auto
+python3 seven_segment.py --brightness 4 --trig 8 --echo 11
+```
+
+File test cũ cũng có đường vào tương đương:
+
+```sh
+python3 test_displays.py --target 7seg --interactive
+python3 test_displays.py --target 7seg --distance
+```
+
+API để chương trình khác (hoặc adapter Scratch sau này) gọi lại:
+
+```python
+from vehicle_testing.seven_segment import SevenSegmentDisplay
+
+with SevenSegmentDisplay() as led:
+    led.show_number(123)       # 0123; nhận số 0..9999, làm tròn phần thập phân
+    led.set_brightness(3)      # 0..7, không đổi số đang hiển thị
+    led.show_error()           # ----
+    led.clear()                # Xóa bốn vị trí
+    # Giữ đối tượng trong suốt phiên ứng dụng; ra khỏi with sẽ tắt LED.
+```
+
+Đầu vào của `show_number()` có thể đến từ hằng số, biến, phép tính hoặc
+`sensor.read_distance_cm()` của `UltrasonicSensor`. Import module không mở
+GPIO, motor hay servo. Phần Scratch/frontend/runtime chưa được nối trong
+thay đổi này; hiện chưa có API hiển thị chữ, chạy chữ hoặc nhiệt độ cho LED
+7 đoạn.
 
 ## Đọc cảm biến siêu âm riêng
 

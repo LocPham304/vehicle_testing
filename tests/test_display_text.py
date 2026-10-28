@@ -113,13 +113,18 @@ class InteractiveTests(unittest.TestCase):
 
 class CLITests(unittest.TestCase):
     def test_bad_text_or_matrix_mode_on_7seg_is_rejected_before_gpio(self):
-        for arguments in (["--target", "7seg", "--interactive"],
-                          ["--target", "7seg", "--text", "HI"],
+        for arguments in (["--target", "7seg", "--text", "HI"],
                           ["--text", "🙂"]):
             with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as error:
                     module.main(arguments)
                 self.assertEqual(error.exception.code, 2)
+
+    def test_seven_segment_interactive_and_distance_delegate_to_number_session(self):
+        for flag in ("--interactive", "--distance"):
+            with self.subTest(flag=flag), patch.object(module, "seven_segment_main", return_value=0) as session:
+                self.assertEqual(module.main(["--target", "7seg", flag]), 0)
+                self.assertEqual("--auto" in session.call_args.args[0], flag == "--distance")
 
     def test_interactive_exit_disables_matrix_and_only_releases_its_gpio(self):
         class GPIO:
