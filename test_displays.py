@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Standalone LED test. Run inside vehicle_testing: python3 test_displays.py.
+Scroll HELLO: python3 test_displays.py --target matrix --hello
 
 Defaults are from pi4-source test scripts, not a verified wiring diagram:
 TM1637 CLK=BCM16, DIO=BCM6; TM1640 SCLK=BCM7, DIN=BCM5.
@@ -15,6 +16,28 @@ import time
 DIGITS = (0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F)
 MATRIX_OK = (0, 0, 0x3E, 0x41, 0x41, 0x41, 0x3E, 0, 0,
              0x7F, 0x08, 0x14, 0x22, 0x41, 0, 0)
+
+
+def hello_frames():
+    """Slide 5x7 HELLO columns right-to-left across a 16-column display.
+
+    Bit 0 is the top row; the eighth row stays blank. Physical orientation
+    depends on how the matrix is mounted.
+    """
+    font = {
+        "H": (0x7F, 0x08, 0x08, 0x08, 0x7F),
+        "E": (0x7F, 0x49, 0x49, 0x49, 0x41),
+        "L": (0x7F, 0x40, 0x40, 0x40, 0x40),
+        "O": (0x3E, 0x41, 0x41, 0x41, 0x3E),
+    }
+    columns = []
+    for index, letter in enumerate("HELLO"):
+        if index:
+            columns.append(0)
+        columns.extend(font[letter])
+    strip = [0] * 16 + columns + [0] * 16
+    for offset in range(len(strip) - 16 + 1):
+        yield strip[offset:offset + 16]
 
 
 class DisplayLink:
@@ -91,9 +114,12 @@ def main(argv=None):
     parser.add_argument("--matrix-dio", type=int, default=5, help="GPIO BCM DIN cua ma tran")
     parser.add_argument("--number", type=int, default=1234, help="So hien thi 0..9999")
     parser.add_argument("--brightness", type=int, choices=range(8), default=2)
+    parser.add_argument("--hello", action="store_true", help="Chay chu HELLO tren ma tran 16x8")
     args = parser.parse_args(argv)
     if not 0 <= args.number <= 9999:
         parser.error("So hien thi phai trong khoang 0..9999.")
+    if args.hello and args.target == "7seg":
+        parser.error("--hello can --target matrix hoac both.")
 
     selected = []
     if args.target in ("7seg", "both"):
@@ -111,6 +137,7 @@ def main(argv=None):
         return 1
 
     configured, displays = [], []
+    matrix_display = None
     result = 0
     try:
         GPIO.setmode(GPIO.BCM)
@@ -120,15 +147,28 @@ def main(argv=None):
                 configured.append(pin)
             display = DisplayLink(GPIO, clk, dio, ack=ack)
             displays.append(display)
-            frame = [DIGITS[int(digit)] for digit in f"{args.number:04d}"] if ack else MATRIX_OK
+            if ack:
+                frame = [DIGITS[int(digit)] for digit in f"{args.number:04d}"]
+            else:
+                matrix_display = display
+                frame = [0] * 16 if args.hello else MATRIX_OK
             display.show(frame, args.brightness)
-            expected = f"{args.number:04d}" if ack else "OK (co the xoay/nguoc tuy cach lap)"
+            expected = f"{args.number:04d}" if ack else (
+                "HELLO (chay chu)" if args.hello else "OK (co the xoay/nguoc tuy cach lap)"
+            )
             print(f"{name}: CLK=BCM{clk}, DATA=BCM{dio}; da gui hinh {expected}.", flush=True)
             if display.missing_ack:
                 print("CANH BAO: TM1637 khong ACK day du; kiem tra nguon, chan CLK/DIO va day.", flush=True)
         print("Quan sat LED thuc te de xac nhan. Nhan Ctrl+C de tat va thoat.", flush=True)
         while True:
-            time.sleep(1)
+            if args.hello:
+                for frame in hello_frames():
+                    # Keep the display enabled between scrolling frames.
+                    matrix_display.send([0x40])
+                    matrix_display.send([0xC0, *frame])
+                    time.sleep(0.1)
+            else:
+                time.sleep(1)
     except KeyboardInterrupt:
         print("\nDang tat LED...")
     except (OSError, RuntimeError) as error:
