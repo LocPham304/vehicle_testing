@@ -1,0 +1,2 @@
+# Laptop SPP COM client. Pi receiver uses apt packages python3-dbus/python3-gi.
+pyserial==3.5

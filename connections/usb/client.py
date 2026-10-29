@@ -12,8 +12,9 @@ from vehicle_testing.runtime.console import DEFAULT_FILE, run_console
 
 
 class USBClient:
-    def __init__(self, connection, *, notify=None):
+    def __init__(self, connection, *, notify=None, transport="USB"):
         self.connection = connection
+        self.transport = transport
         self.notify = notify or (lambda event: print("Pi:", json.dumps(event, ensure_ascii=False), flush=True))
         self._done = Event()
         self._lock, self._write_lock = Lock(), Lock()
@@ -38,7 +39,7 @@ class USBClient:
 
     def request(self, action, *, code=None, timeout=3):
         if self.closed:
-            raise OSError("USB da dong; ket noi lai va upload lai.")
+            raise OSError(f"{self.transport} da dong; ket noi lai va upload lai.")
         message = {"id": uuid.uuid4().hex, "action": action}
         if code is not None:
             if len(code.encode("utf-8")) > 65536:
@@ -51,7 +52,7 @@ class USBClient:
             data = encode(message)
             with self._write_lock:
                 if self.closed or self.connection.write(data) != len(data):
-                    raise OSError("Khong gui day du du lieu USB.")
+                    raise OSError(f"Khong gui day du du lieu {self.transport}.")
             try:
                 return queue.get(timeout=timeout)
             except Empty as error:
@@ -101,7 +102,7 @@ class USBClient:
                 except Exception:
                     pass
         finally:
-            self._fail("USB da dong.")
+            self._fail(f"{self.transport} da dong.")
             self.connection.close()
             for thread in self._threads:
                 if thread is not current_thread():

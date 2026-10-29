@@ -37,9 +37,13 @@ vehicle_testing/
 │   │   ├── receiver.py          # Chạy trên Pi
 │   │   ├── client.py            # Chạy trên laptop
 │   │   └── protocol.py          # JSON, giới hạn khung và chống lặp request
-│   └── wifi/
+│   ├── wifi/
 │       ├── receiver.py          # HTTP trực tiếp trên Pi
 │       └── client.py            # HTTP client trên laptop
+│   └── bluetooth/
+│       ├── receiver.py          # Phiên Bluetooth Classic SPP trên Pi
+│       ├── bluez.py             # Đăng ký dịch vụ và nhận socket từ BlueZ
+│       └── client.py            # COM Outgoing Bluetooth trên Windows
 ├── cli/
 │   ├── robot.py                 # Điều khiển terminal: tien/lui/chay/...
 │   └── check_pwm.py             # Kiểm tra cấu hình PWM, chỉ đọc
@@ -61,6 +65,7 @@ nguyên vị trí và cấu hình hiện tại. `examples/scratch_sample.txt` c�
 | `scratch_receiver.py` | `connections/mqtt/receiver.py` |
 | `usb_receiver.py`, `usb_client.py` | `connections/usb/receiver.py`, `client.py` |
 | `wifi_receiver.py`, `wifi_client.py` | `connections/wifi/receiver.py`, `client.py` |
+| `bluetooth_receiver.py`, `bluetooth_client.py` | `connections/bluetooth/receiver.py`, `client.py` |
 | `test_displays.py` | `hardware/displays/matrix.py` |
 | `seven_segment.py` | `hardware/displays/seven_segment.py` |
 | `ultrasonic.py` | `hardware/ultrasonic.py` |
@@ -104,7 +109,7 @@ Upload không tự chạy. `stop` yêu cầu dừng, `status` xem trạng thái,
 `upload` mặc định gửi `examples/scratch_sample.txt` của laptop. Bật phần cứng thật
 bằng cách thay `--dry-run` trên Pi thành `--run`. Giữ công cụ gửi mở để có ping;
 mất tin hợp lệ trong 5 giây sẽ yêu cầu dừng và xóa kịch bản chờ. Không chạy đồng
-thời các receiver USB, MQTT, Wi-Fi ở chế độ điều khiển phần cứng.
+thời các receiver USB, MQTT, Wi-Fi, Bluetooth ở chế độ điều khiển phần cứng.
 
 ## Kết nối Wi-Fi bằng HTTP trực tiếp
 
@@ -129,6 +134,30 @@ Muốn chạy motor/LED thật, thay `--dry-run` trên Pi thành `--run`, rồi 
 upload lại. Mặc định không có cờ là preview. Chỉ mở một receiver điều khiển phần
 cứng mỗi lần. Xem [hướng dẫn Wi-Fi và API HTTP](docs/WIFI.md) để thử độc lập với
 MQTT, lấy sự kiện block/trạng thái và kết nối lại.
+
+## Kết nối Bluetooth Classic SPP
+
+Đọc [hướng dẫn Bluetooth](docs/BLUETOOTH.md) để cài BlueZ/D-Bus trên Pi, ghép đôi
+laptop và tạo COM Outgoing trước lần thử đầu. Sau khi cấu hình xong, trong
+`vehicle_testing` trên Pi:
+
+```sh
+source .venv/bin/activate
+python3 bluetooth_receiver.py --dry-run
+```
+
+Trên PowerShell laptop, cũng trong `vehicle_testing`:
+
+```powershell
+python -m pip install -r requirements-bluetooth.txt
+python bluetooth_client.py
+```
+
+Chọn số thứ tự cổng COM Bluetooth của Pi; nhập riêng `upload` rồi `run` ở dấu
+nhắc `bt>`. Có `stop`, `status`, `exit`; client tự ping, ngắt link/hết heartbeat
+sẽ yêu cầu dừng và xóa bản chờ. Bluetooth không cần Wi-Fi hay broker.
+`--dry-run` là mô phỏng; muốn chạy motor/LED thật, dùng `--run` trên Pi rồi mở
+lại client và upload lại. Chỉ mở một receiver điều khiển phần cứng mỗi lần.
 
 ## Chạy kịch bản Scratch có sẵn trên Pi
 
