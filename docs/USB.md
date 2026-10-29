@@ -1,5 +1,10 @@
 # Thử điều khiển robot qua USB-C
 
+Code triển khai nằm trong `connections/usb/`; `usb_receiver.py` và
+`usb_client.py` ở ngoài cùng giữ nguyên các lệnh chạy trong hướng dẫn này.
+Logic bản chờ/worker nằm trong `runtime/session.py`, console nhập lệnh trong
+`runtime/console.py`.
+
 ## Cách nối và giới hạn đã xác nhận
 
 Laptop Windows -> cáp USB có truyền dữ liệu -> cổng USB-C của Raspberry Pi 4.

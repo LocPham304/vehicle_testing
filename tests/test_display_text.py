@@ -7,7 +7,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from vehicle_testing import test_displays as module
+from vehicle_testing.hardware.displays import matrix as module
 
 
 class TextRenderingTests(unittest.TestCase):

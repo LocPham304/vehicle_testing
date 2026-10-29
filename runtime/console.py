@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-DEFAULT_FILE = Path(__file__).resolve().parent / "examples" / "scratch_sample.txt"
+from vehicle_testing.runtime.paths import DEFAULT_SAMPLE as DEFAULT_FILE
 
 
 def run_console(client, *, input_fn=input, output_fn=print, default_file=DEFAULT_FILE, prompt="usb> "):

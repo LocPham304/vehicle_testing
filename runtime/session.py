@@ -3,8 +3,8 @@
 import logging
 from threading import Event, RLock, Thread
 
-from .scratch_parser import parse_program, format_program
-from .scratch_runner import ExecutionCancelled, validate_program
+from vehicle_testing.runtime.parser import parse_program, format_program
+from vehicle_testing.runtime.runner import ExecutionCancelled, validate_program
 
 
 logger = logging.getLogger(__name__)

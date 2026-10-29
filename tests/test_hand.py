@@ -9,8 +9,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from vehicle_testing.main import parse_command, run_session
-from vehicle_testing.controller import MotorController
+from vehicle_testing.cli.robot import parse_command, run_session
+from vehicle_testing.hardware.motors import MotorController
 
 
 class RecordingServo:
@@ -39,7 +39,7 @@ def mock_lift_calibration(testcase, module):
 
 class HandControllerTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
         mock_lift_calibration(self, self.module)
         self.output = RecordingServo()
         self.factory = Mock(return_value=self.output)
@@ -89,7 +89,7 @@ class HandControllerTests(unittest.TestCase):
 
 class GPIOOutputTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
         mock_lift_calibration(self, self.module)
         self.gpio = Mock(BCM=11, OUT=0)
         self.pwm = self.gpio.PWM.return_value
@@ -137,7 +137,7 @@ class GPIOOutputTests(unittest.TestCase):
 
 class HandSessionTests(unittest.TestCase):
     def setUp(self):
-        module = importlib.import_module("vehicle_testing.hand")
+        module = importlib.import_module("vehicle_testing.hardware.servos")
         mock_lift_calibration(self, module)
         self.motor = Mock()
         self.controller = MotorController(self.motor, sleeper=lambda _: None)
@@ -187,7 +187,7 @@ class HandSessionTests(unittest.TestCase):
         self.assertNotIn("tay_goc", result.stdout)
 
     def test_cleanup_attempts_hand_even_when_motor_cleanup_fails(self):
-        module = importlib.import_module("vehicle_testing.main")
+        module = importlib.import_module("vehicle_testing.cli.robot")
         for failure, expected in ((OSError("I2C close failed"), 1), (KeyboardInterrupt(), 130)):
             with self.subTest(failure=failure), patch.object(module, "MotorController") as motors, \
                     patch.object(module, "HandController") as hands, \

@@ -77,7 +77,7 @@ class ImportTests(unittest.TestCase):
     def test_cli_runs_directly_inside_vehicle_folder_and_as_package(self):
         for arguments, cwd in (
             (["ultrasonic.py", "--help"], ROOT / "vehicle_testing"),
-            (["-m", "vehicle_testing.ultrasonic", "--help"], ROOT),
+            (["-m", "vehicle_testing.hardware.ultrasonic", "--help"], ROOT),
         ):
             with self.subTest(arguments=arguments):
                 result = subprocess.run(
@@ -91,9 +91,9 @@ class ImportTests(unittest.TestCase):
     def test_import_does_not_open_gpio_motor_or_servo_modules(self):
         result = subprocess.run(
             [sys.executable, "-B", "-c",
-             "import sys; from vehicle_testing.ultrasonic import UltrasonicSensor; "
+             "import sys; from vehicle_testing.hardware.ultrasonic import UltrasonicSensor; "
              "assert not any(name in sys.modules for name in "
-             "('RPi.GPIO', 'board', 'vehicle_testing.controller', 'vehicle_testing.hand'))"],
+             "('RPi.GPIO', 'board', 'vehicle_testing.hardware.motors', 'vehicle_testing.hardware.servos'))"],
             cwd=ROOT, capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -101,7 +101,7 @@ class ImportTests(unittest.TestCase):
 
 class UltrasonicTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.ultrasonic")
+        self.module = importlib.import_module("vehicle_testing.hardware.ultrasonic")
         self.clock = FakeClock()
         self.gpio = SensorGPIO(self.clock)
 

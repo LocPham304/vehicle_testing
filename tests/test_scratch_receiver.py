@@ -50,7 +50,7 @@ class Client:
 class EntryTests(unittest.TestCase):
     def test_offline_preview_direct_and_module_work_without_hardware(self):
         for arguments, cwd in ((["scratch_receiver.py", "--file", str(SAMPLE)], ROOT / "vehicle_testing"),
-                               (["-m", "vehicle_testing.scratch_receiver", "--file", str(SAMPLE)], ROOT)):
+                               (["-m", "vehicle_testing.connections.mqtt.receiver", "--file", str(SAMPLE)], ROOT)):
             with self.subTest(arguments=arguments):
                 result = subprocess.run([sys.executable, "-B", *arguments], cwd=cwd,
                                         capture_output=True, text=True, encoding="utf-8", timeout=10)
@@ -60,9 +60,9 @@ class EntryTests(unittest.TestCase):
                 self.assertIn("2 giay", result.stdout)
 
     def test_receiver_import_does_not_load_mqtt_or_hardware(self):
-        code = ("import sys; import vehicle_testing.scratch_receiver; "
+        code = ("import sys; import vehicle_testing.connections.mqtt.receiver; "
                 "assert not any(n in sys.modules for n in "
-                "('RPi.GPIO','board','serial','paho','vehicle_testing.controller','vehicle_testing.hand'))")
+                "('RPi.GPIO','board','serial','paho','vehicle_testing.hardware.motors','vehicle_testing.hardware.servos'))")
         result = subprocess.run([sys.executable, "-B", "-c", code], cwd=ROOT,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -79,7 +79,7 @@ class EntryTests(unittest.TestCase):
 
 class ReceiverTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.scratch_receiver")
+        self.module = importlib.import_module("vehicle_testing.connections.mqtt.receiver")
         self.receiver = self.module.ScratchReceiver("robot-001")
         self.client = Client()
 

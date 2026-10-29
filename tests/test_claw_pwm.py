@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 class HardwareClawTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
         self.hardware = Mock()
         self.pwm = self.hardware.HardwarePWM.return_value
         provider = patch.object(self.module, "validate_claw_pwm_chip")

@@ -1,5 +1,9 @@
 # Cấu hình thử nâng/hạ −10°/80° và hiệu chỉnh xung
 
+Code hiện tại: `hardware/servos.py` và `hardware/pwm.py`; cấu hình vẫn sửa ở
+`config.py`. Các tên file cũ trong phần lịch sử bên dưới mô tả những lần thử
+trước khi sắp xếp thư mục.
+
 Người dùng xác nhận nâng/hạ đến cuối hành trình trong khoảng 1 giây và phần
 thời gian còn lại giật mạnh; tay đã chạm hoặc ép vào khung/điểm chặn cơ khí.
 Lịch gửi góc trong phần mềm không cho biết vị trí thật. Tăng số giây không tránh

@@ -3,9 +3,9 @@ from threading import Event
 import unittest
 from unittest.mock import Mock
 
-from vehicle_testing.script_session import RobotSession
-from vehicle_testing.usb_protocol import LineDecoder, encode, RequestHandler
-from vehicle_testing.usb_receiver import serve_connection
+from vehicle_testing.runtime.session import RobotSession
+from vehicle_testing.connections.usb.protocol import LineDecoder, encode, RequestHandler
+from vehicle_testing.connections.usb.receiver import serve_connection
 
 
 SOURCE = 'report_block("from-usb")\nrobot.sendCmd("move_forward:2")\nrobot.sendCmd("led_strip:văn bản")'

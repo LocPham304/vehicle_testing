@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from vehicle_testing import scratch_receiver as receiver_module
-from vehicle_testing import scratch_runner as runner
-from vehicle_testing.controller import MotorController
+from vehicle_testing.connections.mqtt import receiver as receiver_module
+from vehicle_testing.runtime import runner
+from vehicle_testing.hardware.motors import MotorController
 from vehicle_testing.config import MOTORS
-from vehicle_testing.scratch_parser import parse_program
+from vehicle_testing.runtime.parser import parse_program
 from vehicle_testing.tests.test_scratch_receiver import Client
 
 

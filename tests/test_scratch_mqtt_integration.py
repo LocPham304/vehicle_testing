@@ -10,8 +10,8 @@ from threading import Event
 import time
 import unittest
 
-from vehicle_testing.scratch_receiver import ScratchReceiver, create_client
-from vehicle_testing.scratch_runner import execute_program
+from vehicle_testing.connections.mqtt.receiver import ScratchReceiver, create_client
+from vehicle_testing.runtime.runner import execute_program
 
 
 MOSQUITTO = shutil.which("mosquitto")

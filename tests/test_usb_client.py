@@ -9,11 +9,11 @@ from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from vehicle_testing.script_session import RobotSession
-from vehicle_testing.scratch_runner import execute_program
-from vehicle_testing.usb_receiver import SerialWriter, serve_connection
-from vehicle_testing.usb_client import USBClient, run_console
-from vehicle_testing import usb_client
+from vehicle_testing.runtime.session import RobotSession
+from vehicle_testing.runtime.runner import execute_program
+from vehicle_testing.connections.usb.receiver import SerialWriter, serve_connection
+from vehicle_testing.connections.usb.client import USBClient, run_console
+from vehicle_testing.connections.usb import client as usb_client
 
 
 class MemorySerial:

@@ -4,13 +4,13 @@ import importlib
 import unittest
 from unittest.mock import Mock, patch
 
-from vehicle_testing.main import HELP, parse_command
+from vehicle_testing.cli.robot import HELP, parse_command
 from vehicle_testing.tests.test_hand import mock_lift_calibration
 
 
 class TimedHandTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
         mock_lift_calibration(self, self.module)
 
     def test_commands_only_accept_seconds_and_remove_tay_goc(self):

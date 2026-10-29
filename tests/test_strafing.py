@@ -6,7 +6,8 @@ from contextlib import redirect_stdout
 from dataclasses import replace
 from unittest.mock import patch
 
-from vehicle_testing import config, controller
+from vehicle_testing import config
+from vehicle_testing.hardware import motors as controller
 from vehicle_testing.tests import test_robot
 
 
@@ -103,7 +104,7 @@ class StrafingTests(unittest.TestCase):
 
 class StrafingCommandTests(unittest.TestCase):
     def test_parser_uses_seconds_and_optional_pwm(self):
-        from vehicle_testing.main import parse_command
+        from vehicle_testing.cli.robot import parse_command
         self.assertEqual(parse_command(" NGANG_TRAI 2 "), ("strafe_left", 2.0, config.DEFAULT_SPEED))
         self.assertEqual(parse_command("ngang_phai 1.5 0.3"), ("strafe_right", 1.5, 0.3))
         for text in ("ngang_trai", "ngang_phai abc", "ngang_trai 0", "ngang_phai -1",
@@ -113,7 +114,7 @@ class StrafingCommandTests(unittest.TestCase):
                 parse_command(text)
 
     def test_mixed_script_executes_once_in_order_and_interrupt_cancels_rest(self):
-        from vehicle_testing.main import run_session
+        from vehicle_testing.cli.robot import run_session
         for interrupt in (False, True):
             with self.subTest(interrupt=interrupt):
                 output = test_robot.RecordingOutput()

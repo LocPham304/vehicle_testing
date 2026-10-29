@@ -9,35 +9,73 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 
 ## Cấu trúc
 
-| File | Trách nhiệm |
+Code triển khai được gom theo chức năng. Các file chạy quen thuộc ở ngoài cùng
+chỉ gọi module tương ứng, nên những lệnh đang dùng trên Pi/laptop vẫn giữ nguyên.
+
+```text
+vehicle_testing/
+├── config.py                    # Chỉnh GPIO, PWM, góc và hệ số bánh xe tại đây
+├── hardware/                    # Điều khiển phần cứng
+│   ├── motors.py                # PCA9685 và chuyển động Mecanum
+│   ├── servos.py                # Tay nâng/hạ và càng
+│   ├── pwm.py                   # Nhận diện driver PWM từ device tree
+│   ├── ultrasonic.py            # Cảm biến khoảng cách
+│   └── displays/
+│       ├── link.py              # Giao thức CLK/DATA
+│       ├── matrix.py            # Font, chạy chữ và CLI thử LED ma trận
+│       └── seven_segment.py     # LED 4 số, nhập tay và khoảng cách tự động
+├── runtime/                     # Xử lý và thực hiện kịch bản
+│   ├── parser.py                # Parse robot.sendCmd/report_block thành dữ liệu
+│   ├── runner.py                # Thực hiện lệnh bằng motor/LED, có dry-run
+│   ├── session.py               # Bản chờ, worker và hủy chạy dùng chung USB/Wi-Fi
+│   ├── console.py               # Console upload/run/stop/status dùng chung
+│   └── paths.py                 # Vị trí file mẫu, độc lập thư mục đang đứng
+├── connections/                 # Các cách gửi/nhận kịch bản
+│   ├── mqtt/
+│   │   └── receiver.py          # Qua broker MQTT
+│   ├── usb/
+│   │   ├── receiver.py          # Chạy trên Pi
+│   │   ├── client.py            # Chạy trên laptop
+│   │   └── protocol.py          # JSON, giới hạn khung và chống lặp request
+│   └── wifi/
+│       ├── receiver.py          # HTTP trực tiếp trên Pi
+│       └── client.py            # HTTP client trên laptop
+├── cli/
+│   ├── robot.py                 # Điều khiển terminal: tien/lui/chay/...
+│   └── check_pwm.py             # Kiểm tra cấu hình PWM, chỉ đọc
+├── examples/                    # Kịch bản mẫu
+├── tests/                       # Kiểm thử chức năng hiện có và các lệnh chạy cũ
+│   └── legacy/                  # Giữ test cho công cụ dò servo đã bỏ
+├── docs/                        # Hướng dẫn USB, Wi-Fi, PWM và ghi chú thiết kế
+├── requirements*.txt            # Dependency chung, USB và MQTT
+└── *.py                         # Các file gọi lệnh cũ, xem bảng bên dưới
+```
+
+Muốn sửa logic, mở file triển khai trong thư mục chức năng. `config.py` giữ
+nguyên vị trí và cấu hình hiện tại. `examples/scratch_sample.txt` cũng giữ nguyên.
+
+| File gọi ở ngoài cùng | Module triển khai |
 | --- | --- |
-| `config.py` | Cấu hình bánh xe và GPIO, tần số, giới hạn góc, thời gian chờ của servo |
-| `controller.py` | Xuất tín hiệu, chạy nhóm bánh, dừng và giải phóng kết nối |
-| `hand.py` | Nâng/hạ BCM 18 qua kernel pwm-gpio; càng BCM 12 dùng PWM phần cứng |
-| `gpio_pwm.py` | Nhận diện driver PWM theo device tree, không đoán số pwmchip |
-| `ultrasonic.py` | Đọc cảm biến siêu âm TRIG/ECHO, timeout và giải phóng riêng GPIO cảm biến |
-| `test_displays.py` | Thử LED 7 đoạn và ma trận; hiển thị chữ tĩnh/chạy chữ hoặc nhập nội dung qua terminal |
-| `seven_segment.py` | API LED 4 số; nhập số và chuyển sang hiển thị khoảng cách bằng lệnh `auto` |
-| `display_link.py` | Giao thức CLK/DATA dùng chung cho TM1637 và TM1640 |
-| `scratch_parser.py` | Parse marker/block ID và lệnh Scratch tuần tự thành dữ liệu đã kiểm tra |
-| `scratch_receiver.py` | Nhận MQTT; preview mặc định, `--run` chạy motor/LED, `--dry-run` chạy mô phỏng |
-| `scratch_runner.py` | Chạy file kịch bản Scratch cục bộ qua motor và LED ma trận; có `--dry-run` |
-| `usb_receiver.py` | Nhận upload/run/stop qua USB serial trên Pi, mặc định preview |
-| `usb_client.py` | Chọn COM trên laptop, gửi từng lệnh upload/run/stop/status riêng |
-| `wifi_receiver.py` | HTTP trực tiếp qua mạng, không cần broker; preview, mô phỏng hoặc chạy thật |
-| `wifi_client.py` | Client laptop qua IP, console upload/run/stop/status, tự ping và đọc events |
-| `control_console.py` | Console nhập lệnh dùng chung cho USB và Wi-Fi |
-| `script_session.py` | Phiên chạy dùng chung USB/Wi-Fi: bản chờ, một worker, hủy và giải phóng |
-| `usb_protocol.py` | Khung UTF-8 JSON, giới hạn bộ đệm và nhận diện request trùng |
-| `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
-| `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
-| `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
-| `tests/test_robot.py` | Kiểm tra luồng điều khiển qua đầu ra giả lập và CLI |
-| `tests/test_turning.py` | Kiểm tra chiều quay Mecanum, hiệu chỉnh góc, dừng và kịch bản có lệnh quay |
-| `tests/test_strafing.py` | Kiểm tra chiều chạy ngang, PWM, xếp lệnh và dừng khi lỗi hoặc bị ngắt |
-| `tests/test_diagonal.py` | Kiểm tra bốn hướng chéo: cặp bánh, chiều quay, bánh tắt, xếp lệnh và dừng |
-| `tests/test_hand.py` | Kiểm tra góc tương đối, giới hạn, GPIO, kịch bản nâng/hạ và giải phóng khi lỗi |
-| `tests/test_claw.py` | Kiểm tra hai chân servo, chiều mở/khép càng, chuyển góc từng bước và dọn cả hai servo |
+| `main.py` | `cli/robot.py` |
+| `scratch_runner.py` | `runtime/runner.py` |
+| `scratch_receiver.py` | `connections/mqtt/receiver.py` |
+| `usb_receiver.py`, `usb_client.py` | `connections/usb/receiver.py`, `client.py` |
+| `wifi_receiver.py`, `wifi_client.py` | `connections/wifi/receiver.py`, `client.py` |
+| `test_displays.py` | `hardware/displays/matrix.py` |
+| `seven_segment.py` | `hardware/displays/seven_segment.py` |
+| `ultrasonic.py` | `hardware/ultrasonic.py` |
+| `check_lift_pwm.py` | `cli/check_pwm.py` |
+| `controller.py` | Import tương thích đến `hardware/motors.py` cho các file thử bánh bên ngoài source này |
+
+Ví dụ vẫn chạy `python3 wifi_receiver.py --run` trong `vehicle_testing`.
+Nếu muốn dùng đường dẫn module mới, từ thư mục cha chạy
+`python3 -m vehicle_testing.connections.wifi.receiver --run`.
+Các package không tự mở GPIO/I²C khi import.
+
+Lịch sử thiết kế trong `docs/` có thể dùng tên file trước khi chuyển. Hai công
+cụ `probe_servo.py` và `probe_lift_pwm.py` đã không còn trước lần sắp xếp này;
+các test cũ được giữ riêng tại [tests/legacy](tests/legacy/README.md), không nằm
+trong discovery hiện tại. Kiểm thử nâng/hạ, càng và PWM đang có vẫn chạy bình thường.
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
 
@@ -1033,7 +1071,7 @@ Kết quả này không thay thế kiểm tra trên xe thực tế.
 Giao diện khác có thể sử dụng lại bộ điều khiển mà không đọc lệnh terminal:
 
 ```python
-from vehicle_testing.controller import MotorController, PCA9685Output
+from vehicle_testing.hardware.motors import MotorController, PCA9685Output
 
 controller = MotorController(PCA9685Output())
 try:

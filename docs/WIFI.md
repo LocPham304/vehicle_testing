@@ -1,5 +1,9 @@
 # Điều khiển qua Wi-Fi bằng HTTP trực tiếp
 
+Code triển khai: `connections/wifi/receiver.py` và `connections/wifi/client.py`.
+Các file `wifi_receiver.py` và `wifi_client.py` ở ngoài cùng vẫn dùng để chạy
+các lệnh trong hướng dẫn này.
+
 Chế độ này đặt trong `vehicle_testing`. Laptop gửi HTTP thẳng đến Pi ở cổng
 `8765`, không đi qua MQTT broker. Pi vẫn dùng parser và runner hiện có để chạy
 motor/LED. Không cần cài thêm thư viện Python cho HTTP.

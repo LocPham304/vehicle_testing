@@ -9,9 +9,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, call, patch
 
-from vehicle_testing import scratch_runner as runner
-from vehicle_testing.scratch_parser import parse_program
-from vehicle_testing.test_displays import text_columns, text_frames
+from vehicle_testing.runtime import runner
+from vehicle_testing.runtime.parser import parse_program
+from vehicle_testing.hardware.displays.matrix import text_columns, text_frames
 
 
 class RunnerTests(unittest.TestCase):
@@ -134,7 +134,7 @@ class RunnerTests(unittest.TestCase):
     def test_direct_and_module_cli_from_other_directory(self):
         root = Path(__file__).resolve().parents[2]
         for command, cwd in (([str(root / "vehicle_testing/scratch_runner.py")], root.parent),
-                             (["-m", "vehicle_testing.scratch_runner"], root)):
+                             (["-m", "vehicle_testing.runtime.runner"], root)):
             result = subprocess.run([sys.executable, "-B", *command, "--dry-run"], cwd=cwd,
                                     capture_output=True, encoding="utf-8", timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)

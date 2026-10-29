@@ -13,9 +13,9 @@ SAMPLE = ROOT / "vehicle_testing/examples/scratch_sample.txt"
 
 class ImportTests(unittest.TestCase):
     def test_parser_import_is_available_without_hardware_or_mqtt(self):
-        code = ("import sys; from vehicle_testing.scratch_parser import parse_program; "
+        code = ("import sys; from vehicle_testing.runtime.parser import parse_program; "
                 "assert not any(n in sys.modules for n in "
-                "('RPi.GPIO', 'board', 'serial', 'paho', 'vehicle_testing.controller'))")
+                "('RPi.GPIO', 'board', 'serial', 'paho', 'vehicle_testing.hardware.motors'))")
         result = subprocess.run([sys.executable, "-B", "-c", code], cwd=ROOT,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -23,7 +23,7 @@ class ImportTests(unittest.TestCase):
 
 class ParserTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.scratch_parser")
+        self.module = importlib.import_module("vehicle_testing.runtime.parser")
 
     def test_user_sample_preserves_seven_markers_and_six_commands(self):
         program = self.module.parse_program(SAMPLE.read_text(encoding="utf-8"))

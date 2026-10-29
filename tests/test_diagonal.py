@@ -6,8 +6,9 @@ from contextlib import redirect_stdout
 from dataclasses import replace
 from unittest.mock import patch
 
-from vehicle_testing import config, controller
-from vehicle_testing.main import parse_command, run_session
+from vehicle_testing import config
+from vehicle_testing.hardware import motors as controller
+from vehicle_testing.cli.robot import parse_command, run_session
 from vehicle_testing.tests import test_robot
 
 

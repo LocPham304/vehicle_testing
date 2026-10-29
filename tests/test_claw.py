@@ -6,14 +6,14 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
-from vehicle_testing.main import HELP, parse_command, run_session
-from vehicle_testing.controller import MotorController
+from vehicle_testing.cli.robot import HELP, parse_command, run_session
+from vehicle_testing.hardware.motors import MotorController
 from vehicle_testing.tests.test_hand import RecordingServo, mock_lift_calibration
 
 
 class ClawTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
         mock_lift_calibration(self, self.module)
         self.output = RecordingServo()
         self.waits = []
@@ -194,7 +194,7 @@ class ClawTests(unittest.TestCase):
             claw.grip()
 
     def test_main_uses_separate_kernel_pwm_providers_and_closes_both(self):
-        main = importlib.import_module("vehicle_testing.main")
+        main = importlib.import_module("vehicle_testing.cli.robot")
         gpio = Mock(BCM=11, OUT=0)
         hardware = Mock()
         lift_pwm, claw_pwm = Mock(), Mock()
@@ -221,7 +221,7 @@ class ClawTests(unittest.TestCase):
         self.assertTrue(claw_pwm.stop.called)
 
     def test_cleanup_attempts_claw_when_lift_cleanup_fails(self):
-        main = importlib.import_module("vehicle_testing.main")
+        main = importlib.import_module("vehicle_testing.cli.robot")
         for failure, expected in ((OSError("GPIO failed"), 1), (KeyboardInterrupt(), 130)):
             with self.subTest(failure=failure), patch.object(main, "MotorController"), \
                     patch.object(main, "HandController") as lift, \

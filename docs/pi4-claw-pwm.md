@@ -1,5 +1,9 @@
 # PWM phần cứng cho càng BCM 12 trên Pi 4 / Debian 13 Trixie
 
+Phần điều khiển servo hiện nằm trong `hardware/servos.py`, nhận diện driver
+trong `hardware/pwm.py`. `config.py`, `main.py` và `check_lift_pwm.py` vẫn dùng
+tại thư mục gốc như các lệnh dưới đây.
+
 Mở yêu cầu 0°, đóng yêu cầu 100°. Trước khi khởi động chương trình, chuẩn bị
 càng khép hoàn toàn như vị trí khởi đầu đã thống nhất. Chương trình không đo góc
 thật hoặc tự đưa về gốc. Bản sửa phát PWM bằng bộ PWM của kernel, giữ các bước

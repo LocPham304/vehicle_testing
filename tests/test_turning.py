@@ -6,7 +6,8 @@ from contextlib import redirect_stdout
 from dataclasses import replace
 from unittest.mock import patch
 
-from vehicle_testing import config, controller
+from vehicle_testing import config
+from vehicle_testing.hardware import motors as controller
 from vehicle_testing.tests import test_robot
 
 RecordingOutput = test_robot.RecordingOutput
@@ -122,7 +123,7 @@ class TurningTests(unittest.TestCase):
 
 class TurningCommandTests(unittest.TestCase):
     def test_parser_accepts_degrees_but_no_per_command_turn_pwm(self):
-        from vehicle_testing.main import parse_command
+        from vehicle_testing.cli.robot import parse_command
         self.assertEqual(parse_command(" TRAI 15.5 "), ("left", 15.5, config.TURN_SPEED))
         self.assertEqual(parse_command("phai 90"), ("right", 90.0, config.TURN_SPEED))
         for text in ("trai", "phai abc", "trai 0", "phai -1", "trai nan", "phai inf", "trai 90 0.5"):
@@ -130,7 +131,7 @@ class TurningCommandTests(unittest.TestCase):
                 parse_command(text)
 
     def test_mixed_script_queues_turns_and_runs_in_order_once(self):
-        from vehicle_testing.main import run_session
+        from vehicle_testing.cli.robot import run_session
         states = []
         output = RecordingOutput()
         def observe(seconds):

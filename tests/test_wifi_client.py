@@ -8,8 +8,8 @@ import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
-from vehicle_testing.control_console import run_console
-from vehicle_testing.wifi_client import WifiClient, main
+from vehicle_testing.runtime.console import run_console
+from vehicle_testing.connections.wifi.client import WifiClient, main
 
 
 class WifiClientTests(unittest.TestCase):
@@ -86,7 +86,7 @@ class WifiClientTests(unittest.TestCase):
         self.assertEqual(client._http.call_args.args, ("POST", "/disconnect", {}))
 
     def test_cli_failure_still_closes_client(self):
-        with patch("vehicle_testing.wifi_client.WifiClient") as factory, redirect_stdout(io.StringIO()):
+        with patch("vehicle_testing.connections.wifi.client.WifiClient") as factory, redirect_stdout(io.StringIO()):
             factory.return_value.start.side_effect = OSError("no Pi")
             self.assertEqual(main(["--host", "192.168.1.40"]), 1)
         factory.return_value.close.assert_called_once_with()

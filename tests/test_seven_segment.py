@@ -72,15 +72,15 @@ class Sensor:
 class EntryTests(unittest.TestCase):
     def test_module_import_does_not_open_gpio_or_motor_hardware(self):
         result = subprocess.run(
-            [sys.executable, "-B", "-c", "import sys; from vehicle_testing.seven_segment import SevenSegmentDisplay; "
-             "assert not any(n in sys.modules for n in ('RPi.GPIO', 'board', 'vehicle_testing.controller', 'vehicle_testing.hand'))"],
+            [sys.executable, "-B", "-c", "import sys; from vehicle_testing.hardware.displays.seven_segment import SevenSegmentDisplay; "
+             "assert not any(n in sys.modules for n in ('RPi.GPIO', 'board', 'vehicle_testing.hardware.motors', 'vehicle_testing.hardware.servos'))"],
             cwd=ROOT, capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_direct_and_module_help_do_not_require_gpio(self):
         for argv, cwd in ((["seven_segment.py", "--help"], ROOT / "vehicle_testing"),
-                          (["-m", "vehicle_testing.seven_segment", "--help"], ROOT)):
+                          (["-m", "vehicle_testing.hardware.displays.seven_segment", "--help"], ROOT)):
             with self.subTest(argv=argv):
                 result = subprocess.run([sys.executable, "-B", *argv], cwd=cwd, capture_output=True, text=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -89,7 +89,7 @@ class EntryTests(unittest.TestCase):
 
 class TransportTests(unittest.TestCase):
     def test_byte_is_lsb_first_and_only_tm1637_has_an_ack_clock(self):
-        from vehicle_testing.display_link import DisplayLink
+        from vehicle_testing.hardware.displays.link import DisplayLink
 
         class PinIO:
             IN, OUT, LOW, PUD_UP = 1, 0, 0, 22
@@ -124,7 +124,7 @@ class TransportTests(unittest.TestCase):
 
 class DisplayFixture(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.seven_segment")
+        self.module = importlib.import_module("vehicle_testing.hardware.displays.seven_segment")
         self.gpio = GPIO()
         self.link = RecordingLink()
         self.patcher = patch.object(self.module, "DisplayLink", return_value=self.link)

@@ -6,13 +6,13 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
-from vehicle_testing.main import run_session
-from vehicle_testing.controller import MotorController
+from vehicle_testing.cli.robot import run_session
+from vehicle_testing.hardware.motors import MotorController
 
 
 class LiftCalibrationTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
 
     def test_default_unmeasured_profile_can_raise_and_lower_for_testing(self):
         output = Mock()

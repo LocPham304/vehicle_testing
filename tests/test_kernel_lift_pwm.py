@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 class GPIOPWMDiscoveryTests(unittest.TestCase):
     def setUp(self):
-        self.discovery = importlib.import_module("vehicle_testing.gpio_pwm")
+        self.discovery = importlib.import_module("vehicle_testing.hardware.pwm")
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -56,7 +56,7 @@ class GPIOPWMDiscoveryTests(unittest.TestCase):
         self.discovery.validate_claw_pwm_chip(2, self.root)
 
     def test_checker_reports_missing_provider_without_creating_channels(self):
-        checker = importlib.import_module("vehicle_testing.check_lift_pwm")
+        checker = importlib.import_module("vehicle_testing.cli.check_pwm")
         with redirect_stdout(io.StringIO()):
             self.assertEqual(checker.main([], sysfs_root=self.root), 1)
         self.assertEqual(list(self.root.iterdir()), [])
@@ -64,9 +64,9 @@ class GPIOPWMDiscoveryTests(unittest.TestCase):
     def test_read_only_checker_prints_provider_without_opening_output(self):
         self.chip(3)
         self.chip(1, compatible=b"brcm,bcm2835-pwm\0")
-        checker = importlib.import_module("vehicle_testing.check_lift_pwm")
+        checker = importlib.import_module("vehicle_testing.cli.check_pwm")
         result = io.StringIO()
-        with patch("vehicle_testing.hand.KernelPWMLiftOutput") as output, redirect_stdout(result):
+        with patch("vehicle_testing.hardware.servos.KernelPWMLiftOutput") as output, redirect_stdout(result):
             self.assertEqual(checker.main([], sysfs_root=self.root), 0)
         output.assert_not_called()
         self.assertIn("pwmchip3", result.getvalue())
@@ -77,7 +77,7 @@ class GPIOPWMDiscoveryTests(unittest.TestCase):
 
 class KernelLiftOutputTests(unittest.TestCase):
     def setUp(self):
-        self.module = importlib.import_module("vehicle_testing.hand")
+        self.module = importlib.import_module("vehicle_testing.hardware.servos")
         calibration = patch.multiple(self.module, SERVO_CALIBRATED=True,
                                     SERVO_DOWN_PULSE_US=1420.0, SERVO_UP_PULSE_US=1080.0)
         calibration.start()

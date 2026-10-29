@@ -3,7 +3,8 @@
 import unittest
 from unittest.mock import patch
 
-from vehicle_testing import config, controller
+from vehicle_testing import config
+from vehicle_testing.hardware import motors as controller
 from vehicle_testing.tests.test_robot import RecordingOutput
 
 

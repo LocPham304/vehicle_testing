@@ -6,9 +6,9 @@ from threading import Event, Thread
 import unittest
 from unittest.mock import patch
 
-from vehicle_testing.wifi_receiver import WifiController, WifiServer
-from vehicle_testing.wifi_client import WifiClient
-from vehicle_testing.scratch_runner import execute_program
+from vehicle_testing.connections.wifi.receiver import WifiController, WifiServer
+from vehicle_testing.connections.wifi.client import WifiClient
+from vehicle_testing.runtime.runner import execute_program
 
 
 SOURCE = 'report_block("network-block")\nrobot.sendCmd("move_forward:2")\nrobot.sendCmd("led_strip:văn bản")'

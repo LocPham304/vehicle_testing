@@ -9,7 +9,7 @@ import math
 import time
 from typing import Callable, Protocol
 
-from vehicle_testing.gpio_pwm import find_gpio_pwm_chip, validate_claw_pwm_chip
+from vehicle_testing.hardware.pwm import find_gpio_pwm_chip, validate_claw_pwm_chip
 
 from vehicle_testing.config import (
     SERVO_BCM_PIN, SERVO_PWM_FREQUENCY_HZ, SERVO_MIN_ANGLE,
