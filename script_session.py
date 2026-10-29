@@ -42,7 +42,7 @@ class RobotSession:
                 except ValueError as error:
                     return {"ok": False, "error": str(error)}
                 self._program = program
-                logger.info("USB UPLOAD hop le.\n%s", format_program(program))
+                logger.info("UPLOAD hop le.\n%s", format_program(program))
                 return {"ok": True, "status": "uploaded", "commands": program.command_count,
                         "markers": program.marker_count}
             if action == "run":
@@ -51,12 +51,12 @@ class RobotSession:
                 if self._program is None:
                     return {"ok": False, "error": "Chua co kich ban hop le; can upload."}
                 if self.executor is None:
-                    logger.info("USB PREVIEW EXECUTE.\n%s", format_program(self._program))
+                    logger.info("PREVIEW EXECUTE.\n%s", format_program(self._program))
                     return {"ok": True, "status": "preview", "commands": self._program.command_count}
                 self._cancel = Event()
                 self._busy = True
                 self._worker = Thread(target=self._execute, args=(self._program, self._cancel),
-                                      name="usb-script", daemon=False)
+                                      name="script-worker", daemon=False)
                 try:
                     self._worker.start()
                 except Exception as error:
@@ -87,7 +87,7 @@ class RobotSession:
         except Exception as error:
             status = "error"
             self._emit({"event": "error", "error": str(error)})
-            logger.error("Loi chay USB: %s", error)
+            logger.error("Loi chay kich ban: %s", error)
         finally:
             with self._lock:
                 self._busy = False

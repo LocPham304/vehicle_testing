@@ -24,7 +24,10 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `scratch_runner.py` | Chạy file kịch bản Scratch cục bộ qua motor và LED ma trận; có `--dry-run` |
 | `usb_receiver.py` | Nhận upload/run/stop qua USB serial trên Pi, mặc định preview |
 | `usb_client.py` | Chọn COM trên laptop, gửi từng lệnh upload/run/stop/status riêng |
-| `script_session.py` | Phiên chạy cho USB: bản chờ, một worker, hủy và giải phóng |
+| `wifi_receiver.py` | HTTP trực tiếp qua mạng, không cần broker; preview, mô phỏng hoặc chạy thật |
+| `wifi_client.py` | Client laptop qua IP, console upload/run/stop/status, tự ping và đọc events |
+| `control_console.py` | Console nhập lệnh dùng chung cho USB và Wi-Fi |
+| `script_session.py` | Phiên chạy dùng chung USB/Wi-Fi: bản chờ, một worker, hủy và giải phóng |
 | `usb_protocol.py` | Khung UTF-8 JSON, giới hạn bộ đệm và nhận diện request trùng |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
@@ -63,7 +66,31 @@ Upload không tự chạy. `stop` yêu cầu dừng, `status` xem trạng thái,
 `upload` mặc định gửi `examples/scratch_sample.txt` của laptop. Bật phần cứng thật
 bằng cách thay `--dry-run` trên Pi thành `--run`. Giữ công cụ gửi mở để có ping;
 mất tin hợp lệ trong 5 giây sẽ yêu cầu dừng và xóa kịch bản chờ. Không chạy đồng
-thời USB và MQTT ở chế độ điều khiển phần cứng.
+thời các receiver USB, MQTT, Wi-Fi ở chế độ điều khiển phần cứng.
+
+## Kết nối Wi-Fi bằng HTTP trực tiếp
+
+Laptop và Pi cùng mạng, không cần MQTT broker hoặc thư viện bổ sung.
+Trong `vehicle_testing` trên Pi, dùng venv đã cài phần cứng:
+
+```sh
+source .venv/bin/activate
+python3 wifi_receiver.py --dry-run
+```
+
+Trên PowerShell laptop, trong `vehicle_testing`:
+
+```powershell
+python wifi_client.py --host 192.168.1.40
+```
+
+Thay IP bằng IP hiện tại của Pi. Nhập `upload`, rồi nhập riêng `run` để thực hiện;
+`stop`, `status`, `exit` giống console USB. Upload không tự chạy. Giữ client mở
+để tự ping; mất liên lạc khoảng 5 giây sẽ yêu cầu dừng và xóa bản chờ.
+Muốn chạy motor/LED thật, thay `--dry-run` trên Pi thành `--run`, rồi kết nối và
+upload lại. Mặc định không có cờ là preview. Chỉ mở một receiver điều khiển phần
+cứng mỗi lần. Xem [hướng dẫn Wi-Fi và API HTTP](docs/WIFI.md) để thử độc lập với
+MQTT, lấy sự kiện block/trạng thái và kết nối lại.
 
 ## Chạy kịch bản Scratch có sẵn trên Pi
 
