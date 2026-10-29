@@ -22,6 +22,10 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `scratch_parser.py` | Parse marker/block ID và lệnh Scratch tuần tự thành dữ liệu đã kiểm tra |
 | `scratch_receiver.py` | Nhận MQTT; preview mặc định, `--run` chạy motor/LED, `--dry-run` chạy mô phỏng |
 | `scratch_runner.py` | Chạy file kịch bản Scratch cục bộ qua motor và LED ma trận; có `--dry-run` |
+| `usb_receiver.py` | Nhận upload/run/stop qua USB serial trên Pi, mặc định preview |
+| `usb_client.py` | Chọn COM trên laptop, gửi từng lệnh upload/run/stop/status riêng |
+| `script_session.py` | Phiên chạy cho USB: bản chờ, một worker, hủy và giải phóng |
+| `usb_protocol.py` | Khung UTF-8 JSON, giới hạn bộ đệm và nhận diện request trùng |
 | `check_lift_pwm.py` | Kiểm tra driver và cấu hình hiệu chỉnh, chỉ đọc, không phát xung |
 | `probe_lift_pwm.py` | Dò xung BCM 18 từng bước nhỏ, mỗi lệnh là một đợt xung ngắn rồi tắt |
 | `main.py` | Nhận và kiểm tra lệnh terminal, quản lý phiên chạy |
@@ -33,6 +37,33 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 | `tests/test_claw.py` | Kiểm tra hai chân servo, chiều mở/khép càng, chuyển góc từng bước và dọn cả hai servo |
 
 Các lệnh dưới đây chạy từ thư mục gốc `raspberry-py`, dùng Python 3.10 trở lên.
+
+## Kết nối bằng dây USB-C
+
+Thử nghiệm USB được đặt trong `vehicle_testing`, chưa chuyển vào `stem_firmware`.
+Pi 4 cần được cấu hình USB Serial Gadget trước để laptop thấy cổng COM.
+Xem [hướng dẫn USB](docs/USB.md) về cáp, nguồn, `dwc2`/`g_serial` và cấu hình lần đầu.
+
+Sau khi cấu hình xong, trong `vehicle_testing` trên Pi:
+
+```sh
+python3 -m pip install -r requirements-usb.txt
+python3 usb_receiver.py --dry-run
+```
+
+Trên PowerShell Windows, cũng trong `vehicle_testing`:
+
+```powershell
+python -m pip install -r requirements-usb.txt
+python usb_client.py
+```
+
+Chọn cổng COM rồi nhập `upload`, sau đó **tự nhập `run`** khi muốn chạy.
+Upload không tự chạy. `stop` yêu cầu dừng, `status` xem trạng thái, `exit` thoát.
+`upload` mặc định gửi `examples/scratch_sample.txt` của laptop. Bật phần cứng thật
+bằng cách thay `--dry-run` trên Pi thành `--run`. Giữ công cụ gửi mở để có ping;
+mất tin hợp lệ trong 5 giây sẽ yêu cầu dừng và xóa kịch bản chờ. Không chạy đồng
+thời USB và MQTT ở chế độ điều khiển phần cứng.
 
 ## Chạy kịch bản Scratch có sẵn trên Pi
 
