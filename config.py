@@ -69,6 +69,12 @@ CLAW_OPEN_ANGLE = 100.0
 CLAW_CLOSE_ANGLE = 0.0
 # User will prepare the claw closed at 0 degrees before starting the program.
 CLAW_START_ANGLE = CLAW_CLOSE_ANGLE
+# Logical claw angles are separate from the servo's electrical pulse scale.
+# Retain the pulse endpoints from the previously working hardware-PWM path:
+# its closed servo request was 100 degrees (~1611 us), open was 0 (500 us).
+# These are existing endpoints, not new measurements of the mechanism.
+CLAW_CLOSE_PULSE_US = 1611.0
+CLAW_OPEN_PULSE_US = 500.0
 # Pi check with both overlays: pwmchip0 = GPIO 18; pwmchip1 = BCM hardware PWM.
 # BCM 12 still uses channel 0. Recheck with check_lift_pwm.py if numbering changes.
 CLAW_PWM_CHIP = 1

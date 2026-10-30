@@ -9,6 +9,13 @@ chương trình, chuẩn bị càng khép ở mốc 0°. Chương trình không 
 thật hoặc tự đưa về gốc. Bản sửa phát PWM bằng bộ PWM của kernel, giữ các bước
 chuyển góc nhẹ ở hai đầu; cần thử trên xe để xác nhận rung đã giảm.
 
+Góc 0°/100° ở đây là hai mốc quy ước của càng. Độ rộng xung servo được cấu hình
+riêng: `CLAW_CLOSE_PULSE_US=1611.0`, `CLAW_OPEN_PULSE_US=500.0`. Hai giá trị giữ
+đầu ra của bản PWM từng chạy ổn: lệnh mở bắt đầu ở xung khép 1611 µs rồi giảm
+dần tới 500 µs, trong khi log góc vẫn là 0° → 100°. Đây chưa phải hai mốc điện
+được đo lại trên cơ cấu. Nếu càng vẫn mở hết sớm hơn thời gian yêu cầu, phải
+xác định dải xung thực tế; không suy ra tốc độ thật chỉ từ thời gian gửi góc.
+
 ## Cấu hình Pi một lần
 
 Thoát các chương trình điều khiển servo. Mở file cấu hình boot hiện có:

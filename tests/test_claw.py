@@ -162,7 +162,7 @@ class ClawTests(unittest.TestCase):
             lift = self.module.GPIOServoOutput()
             claw = self.module.GPIOServoOutput(pin=12)
         claw.set_angle(100)
-        self.assertAlmostEqual(claw_pwm.ChangeDutyCycle.call_args.args[0], 8.0555555556)
+        self.assertAlmostEqual(claw_pwm.ChangeDutyCycle.call_args.args[0], 2.5)
         for angle in (-1, 101, float("nan"), float("inf")):
             with self.subTest(angle=angle), self.assertRaises(ValueError):
                 claw.set_angle(angle)
@@ -217,8 +217,8 @@ class ClawTests(unittest.TestCase):
         hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=0)
         hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=1)
         self.assertTrue(lift_pwm.start.called)
-        claw_pwm.start.assert_called_once_with(2.5)
-        self.assertAlmostEqual(claw_pwm.change_duty_cycle.call_args.args[0], 8.055)
+        claw_pwm.start.assert_called_once_with(8.055)
+        self.assertAlmostEqual(claw_pwm.change_duty_cycle.call_args.args[0], 2.5)
         self.assertTrue(lift_pwm.stop.called)
         self.assertTrue(claw_pwm.stop.called)
 

@@ -755,7 +755,13 @@ Python chỉ thay đổi độ rộng xung khi chuyển góc. Không tắt/bật
 ở mỗi bước. Đây là xử lý một nguồn có thể gây giật trong lúc di chuyển; chưa
 xác nhận nguyên nhân trên xe là xung, nguồn điện hay tải cơ khí.
 Các bước góc vẫn được giữ; góc trùng cùng độ rộng xung nguyên µs không gửi lại.
-Thang xung cũ giữ nguyên: 0° → 500 µs; 100° → khoảng 1611 µs.
+Góc quy ước của càng tách khỏi góc điện của servo: **khép 0° → 1611 µs**,
+**mở 100° → 500 µs**. `CLAW_CLOSE_PULSE_US` và `CLAW_OPEN_PULSE_US` giữ hai
+mốc điện của bản PWM từng chạy ổn, không phải số đo mới trên cơ cấu. Vì vậy
+đổi tên mốc góc không làm lần phát xung đầu nhảy từ mốc khép sang mốc mở.
+Phần mềm nội suy giữa hai xung này trong thời gian yêu cầu; nếu càng vẫn tới
+đích sớm, cần xác định lại hai mốc điện theo hành trình thật. Chỉ tăng thời gian
+hoặc đổi đường nội suy không xác nhận cơ cấu sẽ chuyển động đúng số giây đó.
 Nâng/hạ dùng riêng driver `pwm-gpio` trên BCM 18 như phần thiết lập ở trên.
 
 Thiết lập một lần theo [hướng dẫn Pi 4 / Trixie](docs/pi4-claw-pwm.md).
@@ -843,7 +849,7 @@ Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và 
 Nhãn "12G Digital Servo" chưa xác nhận servo định vị hay quay liên tục.
 Các lệnh càng dùng thang điện 180° với hai góc đích 0°/100° theo cấu hình;
 đó chưa phải dải cơ khí đã hiệu chỉnh của càng thực tế.
-Theo công thức hiện tại, 0°/100° tương ứng khoảng 500/1611 µs. Nếu servo quay
+Theo ánh xạ hiện tại, khép 0°/mở 100° tương ứng 1611/500 µs. Nếu servo quay
 liên tục, dải này có thể chỉ yêu cầu quay cùng một chiều; nếu là servo định vị,
 cơ cấu cũng có thể chạm hết hành trình trong dải này. Chưa xác định nguyên nhân
 chỉ từ việc cả các góc đều làm càng mở hết. Ngắt PWM chỉ dừng yêu cầu giữ xung,

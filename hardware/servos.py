@@ -22,6 +22,7 @@ from vehicle_testing.config import (
     CLAW_START_ANGLE, CLAW_MIN_MOVE_SECONDS, CLAW_UPDATE_INTERVAL_SECONDS,
     CLAW_SETTLE_SECONDS,
     CLAW_PWM_CHIP, CLAW_PWM_CHANNEL,
+    CLAW_CLOSE_PULSE_US, CLAW_OPEN_PULSE_US,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,28 @@ def validate_claw_angle(angle: float) -> None:
         raise ValueError(f"Goc cau hinh cang phai trong [{CLAW_MIN_ANGLE:g}, {CLAW_MAX_ANGLE:g}] do.")
 
 
+def validate_claw_calibration() -> None:
+    """Check electrical limits; these do not establish safe mechanical travel."""
+    for angle in (CLAW_CLOSE_ANGLE, CLAW_OPEN_ANGLE):
+        validate_claw_angle(angle)
+    pulses = (CLAW_CLOSE_PULSE_US, CLAW_OPEN_PULSE_US)
+    if any(not isinstance(pulse, (int, float)) or not math.isfinite(pulse)
+           or not 500 <= pulse <= 2500 for pulse in pulses):
+        raise ValueError("Hai moc xung cang phai huu han trong [500, 2500] us o config.py.")
+    if CLAW_CLOSE_ANGLE == CLAW_OPEN_ANGLE or CLAW_CLOSE_PULSE_US == CLAW_OPEN_PULSE_US:
+        raise ValueError("Hai moc dong/mo cang phai khac nhau ca goc va xung.")
+
+
+def claw_angle_to_pulse_us(angle: float) -> float:
+    """Map logical closed/open angles to the separate servo pulse endpoints."""
+    validate_claw_angle(angle)
+    validate_claw_calibration()
+    fraction = (angle - CLAW_CLOSE_ANGLE) / (CLAW_OPEN_ANGLE - CLAW_CLOSE_ANGLE)
+    if not 0 <= fraction <= 1:
+        raise ValueError("Goc cang nam ngoai hai moc dong/mo da cau hinh.")
+    return CLAW_CLOSE_PULSE_US + fraction * (CLAW_OPEN_PULSE_US - CLAW_CLOSE_PULSE_US)
+
+
 class ServoOutput(Protocol):
     def set_angle(self, angle: float) -> None: ...
     def release(self) -> None: ...
@@ -88,11 +111,13 @@ class DryRunServoOutput:
 
 
 class GPIOServoOutput:
-    """Same PWM conversion as pi4-source/test/test_servo.py, with pin-only cleanup."""
+    """Calibrated servo pulse conversion with cleanup of the selected pin only."""
 
     def __init__(self, pin: int = SERVO_BCM_PIN) -> None:
         if pin not in (SERVO_BCM_PIN, CLAW_BCM_PIN):
             raise ValueError("GPIO servo phai la chan nang/ha hoac cang trong config.py.")
+        if pin == CLAW_BCM_PIN:
+            validate_claw_calibration()
         self._pin = pin
         self._gpio = importlib.import_module("RPi.GPIO")
         self._pwm = None
@@ -114,8 +139,7 @@ class GPIOServoOutput:
 
     def set_angle(self, angle: float) -> None:
         if self._pin == CLAW_BCM_PIN:
-            validate_claw_angle(angle)
-            pulse_us = 500 + angle / 180.0 * 2000
+            pulse_us = claw_angle_to_pulse_us(angle)
         else:
             pulse_us = hand_angle_to_pulse_us(angle)
         if self._closed:
@@ -211,6 +235,7 @@ class HardwarePWMClawOutput:
             raise ValueError("PWM phan cung chi dieu khien GPIO cang trong config.py.")
         if CLAW_PWM_CHANNEL != 0:
             raise ValueError("BCM 12 phai dung kenh PWM0; kiem tra CLAW_PWM_CHANNEL.")
+        validate_claw_calibration()
         validate_claw_pwm_chip(CLAW_PWM_CHIP)
         try:
             hardware = importlib.import_module("rpi_hardware_pwm")
@@ -237,11 +262,9 @@ class HardwarePWMClawOutput:
             raise
 
     def set_angle(self, angle: float) -> None:
-        validate_claw_angle(angle)
+        pulse_us = round(claw_angle_to_pulse_us(angle))
         if self._closed:
             raise RuntimeError("Dau ra cang da dong.")
-        # Preserve the existing electrical scale; only the timing backend changes.
-        pulse_us = round(500 + angle / 180.0 * 2000)
         if pulse_us != self._pulse_us:
             duty = pulse_us / (1_000_000 / SERVO_PWM_FREQUENCY_HZ) * 100
             if self._running:
