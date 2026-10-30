@@ -250,12 +250,18 @@ class HardwarePWMClawOutput:
                 self._pwm.start(duty)
                 self._running = True
             self._pulse_us = pulse_us
+            logger.debug(
+                "Yeu cau PWM cang BCM %d: goc %.3f do, xung %d us, duty %.3f%% (khong do tin hieu).",
+                CLAW_BCM_PIN, angle, pulse_us, duty,
+            )
 
     def release(self) -> None:
         if not self._closed and self._pwm is not None:
+            logger.debug("Cang: gui yeu cau tat PWM; xung yeu cau cuoi %s us.", self._pulse_us)
             self._pwm.stop()
             self._running = False
             self._pulse_us = None
+            logger.debug("Cang: thu vien da tra ve sau yeu cau tat PWM.")
 
     def close(self) -> None:
         if self._closed:
@@ -388,13 +394,17 @@ class ClawController:
                 fraction = progress ** 3 * (10 - 15 * progress + 6 * progress ** 2)
                 position = angle if step == steps else start + (angle - start) * fraction
                 self._output.set_angle(position)
+            logger.info("%s: da gui goc dich %g do; cho %g giay (khong do goc that).",
+                        label, angle, CLAW_SETTLE_SECONDS)
             self._sleep(CLAW_SETTLE_SECONDS)
             if not self._hold_position:
+                logger.info("Cang: bat dau gui yeu cau tat PWM cuoi luot.")
                 self._output.release()
                 logger.info("Da gui yeu cau tat PWM cang; khong giu luc kep lien tuc.")
         except (Exception, KeyboardInterrupt):
             self._angle = None
             if self._output is not None:
+                logger.warning("%s bi loi/ngat; dang gui yeu cau tat PWM cang.", label)
                 try:
                     self._output.release()
                 except Exception:

@@ -117,6 +117,24 @@ giật mạnh hoặc không đi theo các góc trung gian, dừng thử: giới 
 và phản ứng servo vẫn cần kiểm tra. Mốc 100° là góc yêu cầu theo quan sát người dùng,
 chưa phải góc đo hoặc bảo đảm an toàn cơ khí.
 
+## Log chẩn đoán càng tự đóng hoặc giật
+
+`main.py --verbose` ghi các góc và độ rộng xung đã gửi qua thư viện PWM. Đây là
+giá trị phần mềm yêu cầu, không phải góc đo hoặc tín hiệu đo trên chân GPIO.
+Các dòng INFO phân biệt ba thời điểm: đã gửi góc đích, bắt đầu ngắt PWM cuối
+lượt, và bị lỗi/ngắt trước khi dọn đầu ra. Góc, dải xung và chế độ nhả lực không
+thay đổi khi bật log; việc ghi log có thể làm tăng thời gian thực hiện.
+
+Có thể kiểm tra luồng log mà không chuyển động phần cứng:
+
+```sh
+python3 main.py --dry-run --verbose
+```
+
+Nếu càng đã đóng sập hoặc giật mạnh, không lặp lại hành trình để lấy log trên
+cơ cấu đang chịu tải. Trước hết kiểm tra ánh xạ PWM, chương trình khác đang chạy
+và giới hạn cơ khí. Log không chứng minh phần cứng an toàn hoặc đã sửa hết lỗi.
+
 ## Nguồn kỹ thuật
 
 - [Raspberry Pi: overlay PWM và ánh xạ chân](https://github.com/raspberrypi/firmware/blob/master/boot/overlays/README)
