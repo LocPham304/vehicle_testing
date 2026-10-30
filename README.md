@@ -608,32 +608,36 @@ cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
 
 ## Tay nâng/hạ qua GPIO BCM 18
 
-Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng chung
-**kênh `PWM0_0` phần cứng (`brcm,bcm2835-pwm`) ở 50 Hz** với càng BCM 12 thông qua
-bộ chuyển mạch thanh ghi chân `BCM2711PinMux` (`ALT5` cho BCM 18, `ALT0` cho BCM 12,
-chân không chạy được kéo xuống mức thấp `0V`). Giữ nguyên toàn bộ dây cắm mặc định;
-không còn dùng `pwm-gpio` phần mềm gây rung/giật trong `main.py`.
+Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng driver
+**`pwm-gpio` của kernel ở 50 Hz**, qua API sysfs của `rpi-hardware-pwm`.
+Chân này đã được người dùng xác nhận bằng phép thử `probe_servo.py --pin 18`.
 Tần số này độc lập với PWM 1000 Hz của PCA9685 điều khiển bánh xe.
 Không chạy đồng thời với chương trình khác đang dùng GPIO 18 hoặc GPIO 12.
-`--dry-run` không mở GPIO, `/dev/gpiomem` hoặc sysfs PWM.
+Giữ nguyên dây; không còn dùng `RPi.GPIO` để phát xung nâng/hạ trong `main.py`.
+Đây vẫn là PWM phần mềm, do bộ định thời kernel tạo xung; không phải PWM phần cứng.
+`--dry-run` không mở GPIO hoặc sysfs PWM.
 
-Dưới `[all]` trong `/boot/firmware/config.txt`, chỉ cần bật bộ PWM phần cứng
-(nếu vẫn còn dòng `dtoverlay=pwm-gpio,gpio=18` cũ thì chương trình vẫn tự bỏ qua
-chip `pwm-gpio` và chọn đúng `brcm,bcm2835-pwm`, không bắt buộc reboot lại):
+Giữ hai dòng đang dùng cho càng và thêm dòng thứ ba dưới `[all]` trong
+`/boot/firmware/config.txt`:
 
 ```ini
 dtparam=audio=off
 dtoverlay=pwm,pin=12,func=4
+dtoverlay=pwm-gpio,gpio=18
 ```
 
-Từ thư mục `~/vehicle_testing`, có thể kiểm tra bằng:
+Khởi động lại Pi. Sau khi cập nhật source, từ thư mục `~/vehicle_testing`, chạy:
 
 ```sh
 .venv/bin/python check_lift_pwm.py
 ```
 
-Lệnh chỉ đọc metadata, không làm servo chuyển động, và báo đúng `pwmchipN`
-của `brcm,bcm2835-pwm` dùng chung cho BCM 18 và BCM 12.
+Lệnh chỉ đọc, không làm servo chuyển động. Nó tìm đúng provider `pwm-gpio`
+của BCM 18, không mặc định là `pwmchip1`. Nếu số chip của càng đổi, kiểm tra
+driver phần cứng được báo rồi sửa `CLAW_PWM_CHIP` trong `config.py`;
+đầu ra càng sẽ từ chối mở nhầm chip `pwm-gpio`.
+Sau khi nạp overlay này, không chạy `probe_servo.py --pin 18` hoặc chương trình
+`RPi.GPIO` khác trên BCM 18, kể cả khi `main.py` đã thoát: kernel đang sở hữu chân.
 
 ```text
 nang 4
@@ -686,23 +690,18 @@ người dùng đã thử; đây là giới hạn phần mềm, không xác nh�
 là hành trình cơ khí cho phép.
 
 Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;
-chương trình gửi lệnh dừng bánh trước khi điều khiển tay. Khi đổi từ nâng/hạ
-sang càng kẹp hoặc ngược lại, `SharedHardwarePWM0` dừng `PWM0_0`, khóa chân còn
-lại ở mức `0V` và định tuyến xung phần cứng sang đúng chân đang chạy.
+chương trình gửi lệnh dừng bánh trước khi điều khiển tay. BCM 18 dùng bộ định thời
+kernel để tạo xung thay cho luồng Python; chưa xác nhận độ rung trên cơ cấu thật.
 Giữ PWM chạy giữa các bước, chỉ đổi duty, bỏ qua xung nguyên µs trùng nhau.
+Không đổi overlay để xuất PWM0 phần cứng ra BCM 18,
+vì kênh PWM0 đang dùng cho càng BCM 12.
 
-PWM nâng/hạ mặc định **giữ giữa các lượt** (`SERVO_HOLD_POSITION=True`). Đổi này
-nhằm giảm việc tay bị nhả lực ở cuối lượt, xê dịch do tải rồi bật về góc phần mềm
-đã nhớ ở lượt tiếp theo. Chuỗi chỉ có `nang`/`ha` không tắt/bật lại PWM giữa
-các lượt; hai mốc 450/1400 µs và nhịp nội suy 20 ms giữ nguyên. Đây là sửa một
-nguyên nhân phần mềm có thể góp phần gây giật, chưa chứng minh hết giật trên xe.
-
-BCM 18/12 dùng chung PWM0: chạy càng kẹp vẫn ngắt lực giữ tay nâng/hạ; **không
-giữ độc lập hai servo cùng lúc**. Servo kẹp vẫn nhả sau lệnh. Không suy ra góc
-thật từ góc phần mềm nếu tay đã tụt hoặc bị dịch chuyển; chuẩn bị lại mốc hạ
-và khởi động lại trước khi thử. Đặt `SERVO_HOLD_POSITION=False` nếu chủ động
-muốn nhả nâng/hạ sau mỗi lượt; khi đó tay có thể tụt theo tải và có thể giật khi
-nhận lại góc đã nhớ. Giữ PWM cũng không sửa được mốc xung ép vào chặn cơ khí.
+PWM servo nâng/hạ mặc định được tắt sau mỗi hành trình (`SERVO_HOLD_POSITION=False`),
+sau khoảng chờ cuối 0,1 giây, để không tiếp tục giữ cứng tay. Servo càng cũng
+mặc định ngắt PWM sau lệnh như mô tả dưới đây. Cơ cấu có thể hạ theo tải khi mất
+lực giữ. Nếu di chuyển tay bằng tay, chương trình không cập nhật được góc thực;
+cần chuẩn bị lại mốc hạ và khởi động lại trước khi chạy tiếp.
+Đặt `SERVO_HOLD_POSITION=True` khi cần giữ lực và đã xác nhận cơ cấu phù hợp.
 `dung` vẫn hủy kịch bản đang soạn.
 Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng từng GPIO servo đã mở;
 sau đó servo không còn được yêu cầu giữ lực và tay có thể hạ theo tải.

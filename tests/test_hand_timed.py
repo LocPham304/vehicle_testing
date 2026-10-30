@@ -56,8 +56,7 @@ class TimedHandTests(unittest.TestCase):
                 self.assertLess(magnitudes[-1], max(magnitudes) / 10)
         output.release.assert_not_called()
 
-    @patch("vehicle_testing.hardware.servos.SERVO_HOLD_POSITION", False)
-    def test_optional_release_mode_releases_after_each_completed_endpoint(self):
+    def test_default_four_second_moves_release_after_each_completed_endpoint(self):
         elapsed = [0.0]
         releases = []
         output = Mock()

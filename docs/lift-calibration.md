@@ -90,19 +90,12 @@ Không có phép đọc sysfs hay unit test nào thay thế phép đo này. Gi�
 Ngắt PWM không giữ lực đỡ tay; việc tay hiện chưa tụt không chứng minh giữ được
 với tải khác. Các số µs là tín hiệu yêu cầu, không phải số độ hoặc kết quả đo trục.
 
-Sau báo cáo bật mạnh ở đầu hoặc gần cuối cả hai chiều, mặc định được đổi thành
-`SERVO_HOLD_POSITION=True`: giữ xung ở đích giữa hai lượt nâng/hạ, thay vì nhả
-cuối lượt rồi phát lại góc phần mềm đã nhớ. Hai mốc 450/1400 µs không đổi.
-Kiểm thử mô phỏng xác nhận chuỗi nâng → hạ chỉ khởi động PWM một lần và dừng khi
-đóng controller; chưa xác nhận mức giật trên xe. Thoát/lỗi vẫn giải phóng PWM.
+Theo yêu cầu nhả lực sau lệnh, mặc định `SERVO_HOLD_POSITION=False`: kết thúc
+hành trình và chờ 0,1 giây rồi tắt PWM. Cơ cấu có thể hạ theo tải khi mất lực giữ;
+thay đổi này không sửa được việc đi quá hành trình. Nếu dịch chuyển tay bằng tay,
+chuẩn bị lại mốc hạ và khởi động lại trước khi chạy tiếp vì không có phản hồi góc.
 
-BCM 18/12 hiện dùng chung PWM0: chuyển sang kẹp sẽ ngắt giữ tay, không giữ được
-hai servo độc lập. Tắt PWM cũng làm mất lực giữ; góc phần mềm không phải phản
-hồi vị trí. Nếu tay tụt hoặc bị dịch chuyển, chuẩn bị lại mốc hạ và khởi động
-lại trước khi thử. Giữ lực không sửa được việc ép vào điểm chặn. Tùy chọn
-`SERVO_HOLD_POSITION=False` vẫn dành cho khi chủ động muốn nhả sau mỗi lượt.
-
-## Lịch sử phương án pwm-gpio (main.py hiện dùng PWM0 phần cứng)
+## Phương án phát xung mà không đổi dây
 
 Pi đã báo có overlay `pwm-gpio` và module tại
 `/lib/modules/6.12.47+rpt-rpi-v8/kernel/drivers/pwm/pwm-gpio.ko.xz`.
@@ -151,8 +144,8 @@ Sau khi đo lại hai xung theo cơ cấu, có thể thay `SERVO_DOWN_PULSE_US`,
 `SERVO_UP_PULSE_US` và đặt `SERVO_CALIBRATED=True` để ghi nhận đã hiệu chỉnh.
 Không sao chép xung mẫu từ unit test như một kết quả đo trên xe.
 Chương trình chuyển yêu cầu theo bước tối đa 20 ms, nhẹ ở hai đầu, không
-khởi động lại PWM giữa các bước. Main.py hiện mặc định giữ lực nâng/hạ giữa các
-lượt bằng `SERVO_HOLD_POSITION=True`; thoát/lỗi hoặc đổi sang kẹp sẽ ngắt giữ.
+khởi động lại PWM giữa các bước. Mặc định tắt PWM sau hành trình và chờ cuối;
+chỉ giữ lực khi bật lại `SERVO_HOLD_POSITION=True`.
 
 ## Nguồn kỹ thuật
 
