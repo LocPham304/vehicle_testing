@@ -70,7 +70,10 @@ class ClawTests(unittest.TestCase):
                 self.assertEqual(writes[0], (0, start))
                 self.assertEqual(writes[-1][1], target)
                 self.assertAlmostEqual(writes[-1][0], seconds)
-                self.assertAlmostEqual(releases[0], seconds + 0.1)
+                if target == 100:
+                    self.assertEqual(releases, [])  # Keep the claw open at script completion.
+                else:
+                    self.assertAlmostEqual(releases[0], seconds + 0.1)
                 angles = [angle for _, angle in writes]
                 self.assertGreater(len(angles), 90)
                 self.assertTrue(all(0 <= angle <= 100 for angle in angles))
@@ -89,6 +92,28 @@ class ClawTests(unittest.TestCase):
         claw.open()
         self.assertEqual(self.output.angles, angles)
         self.assertEqual(self.waits, waits)
+
+    def test_open_keeps_pwm_until_grip_or_controller_shutdown(self):
+        output = Mock()
+        claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
+        claw.open(4)
+        output.set_angle.assert_called_with(100)
+        output.release.assert_not_called()
+        claw.grip(4)
+        output.set_angle.assert_called_with(0)
+        output.release.assert_called_once()
+        claw.open(4)
+        self.assertEqual(output.release.call_count, 1)
+        claw.close()
+        output.close.assert_called_once()
+
+    def test_open_hold_can_be_disabled_without_enabling_closed_hold(self):
+        output = Mock()
+        with patch.object(self.module, "CLAW_HOLD_OPEN_POSITION", False, create=True):
+            claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
+        claw.open(4)
+        claw.grip(4)
+        self.assertEqual(output.release.call_count, 2)
 
     def test_invalid_duration_never_opens_gpio(self):
         claw = self.claw()
@@ -180,6 +205,7 @@ class ClawTests(unittest.TestCase):
         with patch.object(self.module, "CLAW_HOLD_POSITION", True):
             claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
         claw.open()
+        claw.grip()
         output.release.assert_not_called()
         with patch.object(self.module, "SERVO_HOLD_POSITION", True):
             lift = self.module.HandController(lambda: output, sleeper=lambda _: None)
@@ -188,12 +214,13 @@ class ClawTests(unittest.TestCase):
 
     def test_release_error_is_reported(self):
         output = Mock()
-        output.release.side_effect = OSError("release failed")
         claw = self.module.ClawController(lambda: output, sleeper=lambda _: None)
+        claw.open()
+        output.release.side_effect = OSError("release failed")
         with self.assertRaisesRegex(OSError, "release failed"):
-            claw.open()
-        with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
             claw.grip()
+        with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
+            claw.open()
 
     def test_main_uses_separate_kernel_pwm_providers_and_closes_both(self):
         main = importlib.import_module("vehicle_testing.cli.robot")

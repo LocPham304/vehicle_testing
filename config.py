@@ -86,8 +86,11 @@ CLAW_MIN_MOVE_SECONDS = 2.0
 CLAW_UPDATE_INTERVAL_SECONDS = 0.02
 # Allow the final request to be emitted for several PWM frames before release.
 CLAW_SETTLE_SECONDS = 0.1
-# Match the old door controller's pulse-then-release behavior for the claw.
-# False stops PWM after each move, so active gripping force is not maintained.
+# Keep the open position: user observed the claw closing as soon as PWM stops.
+# This applies only to a completed open; shutdown/errors still stop PWM.
+CLAW_HOLD_OPEN_POSITION = True
+# False releases PWM after closing, so active gripping force is not maintained.
+# True would hold both positions, regardless of CLAW_HOLD_OPEN_POSITION.
 CLAW_HOLD_POSITION = False
 
 

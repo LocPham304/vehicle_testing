@@ -18,7 +18,7 @@ from vehicle_testing.config import (
     SERVO_MOVE_SECONDS, SERVO_MIN_MOVE_SECONDS,
     SERVO_UPDATE_INTERVAL_SECONDS, SERVO_SETTLE_SECONDS, SERVO_HOLD_POSITION,
     CLAW_BCM_PIN, CLAW_MIN_ANGLE, CLAW_MAX_ANGLE, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
-    CLAW_HOLD_POSITION, CLAW_MOVE_SECONDS,
+    CLAW_HOLD_POSITION, CLAW_HOLD_OPEN_POSITION, CLAW_MOVE_SECONDS,
     CLAW_START_ANGLE, CLAW_MIN_MOVE_SECONDS, CLAW_UPDATE_INTERVAL_SECONDS,
     CLAW_SETTLE_SECONDS,
     CLAW_PWM_CHIP, CLAW_PWM_CHANNEL,
@@ -387,6 +387,7 @@ class ClawController:
         self._output: ServoOutput | None = None
         self._sleep = sleeper
         self._hold_position = CLAW_HOLD_POSITION
+        self._hold_open_position = CLAW_HOLD_OPEN_POSITION
         self._closed = False
         self._angle: float | None = CLAW_START_ANGLE
         logger.info("Can de cang khep %g do truoc khi khoi dong; day la vi tri gia dinh, khong do duoc.",
@@ -420,10 +421,15 @@ class ClawController:
             logger.info("%s: da gui goc dich %g do; cho %g giay (khong do goc that).",
                         label, angle, CLAW_SETTLE_SECONDS)
             self._sleep(CLAW_SETTLE_SECONDS)
-            if not self._hold_position:
+            keep_pwm = self._hold_position or (
+                self._hold_open_position and angle == CLAW_OPEN_ANGLE
+            )
+            if not keep_pwm:
                 logger.info("Cang: bat dau gui yeu cau tat PWM cuoi luot.")
                 self._output.release()
                 logger.info("Da gui yeu cau tat PWM cang; khong giu luc kep lien tuc.")
+            else:
+                logger.info("Cang: dang giu PWM o goc yeu cau %g do.", angle)
         except (Exception, KeyboardInterrupt):
             self._angle = None
             if self._output is not None:

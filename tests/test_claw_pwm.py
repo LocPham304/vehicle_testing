@@ -52,13 +52,17 @@ class HardwareClawTests(unittest.TestCase):
         self.assertGreater(writes[-1][0], 3.5)
         pulses = [pulse for _, pulse in writes]
         self.assertTrue(all(b <= a for a, b in zip(pulses, pulses[1:])))
-        self.assertAlmostEqual(stops[-1], 4.1)
+        self.assertEqual(stops, [0.0])  # Keep the final open pulse active.
+        self.assertAlmostEqual(elapsed, 4.1)
         self.pwm.start.assert_called_once()
         # A new close request reverses the same calibrated pulse path.
         writes.clear()
         claw.grip(4)
-        self.assertAlmostEqual(writes[0][1], 500)
+        # 500 us is already active from the held open; the first changed pulse is 501.
+        self.assertAlmostEqual(writes[0][1], 501)
         self.assertAlmostEqual(writes[-1][1], 1611)
+        self.pwm.start.assert_called_once()  # Close continues the active PWM stream.
+        self.assertAlmostEqual(stops[-1], 8.2)
         pulses = [pulse for _, pulse in writes]
         self.assertTrue(all(b >= a for a, b in zip(pulses, pulses[1:])))
 
@@ -92,6 +96,14 @@ class HardwareClawTests(unittest.TestCase):
         self.pwm.stop.assert_called_once()
         with self.assertRaises(RuntimeError):
             output.set_angle(50)
+
+    def test_open_keeps_hardware_pwm_enabled_until_shutdown(self):
+        claw = self.module.ClawController(self.output, sleeper=lambda _: None)
+        claw.open(4)
+        self.pwm.stop.assert_called_once()  # Initial cleanup only, not end of open.
+        self.assertAlmostEqual(self.pwm.change_duty_cycle.call_args.args[0], 2.5)
+        claw.close()
+        self.assertEqual(self.pwm.stop.call_count, 2)
 
     def test_missing_overlay_reports_setup_error_without_software_fallback(self):
         self.hardware.HardwarePWM.side_effect = OSError("PWM overlay missing")

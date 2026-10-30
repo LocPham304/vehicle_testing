@@ -118,8 +118,11 @@ dong_cang 4
 chay
 ```
 
-Các lệnh gửi dần góc yêu cầu trong 4 giây, chờ thêm 0,1 giây ở góc cuối rồi ngắt
-PWM. Không chạy probe hoặc chương trình GPIO khác đồng thời. Nếu càng chạm cứng,
+Các lệnh gửi dần góc yêu cầu trong 4 giây, chờ thêm 0,1 giây ở góc cuối. Mặc định
+`CLAW_HOLD_OPEN_POSITION=True` giữ PWM sau mở để càng không tự khép khi mất xung;
+`CLAW_HOLD_POSITION=False` vẫn nhả PWM sau đóng. Thoát/Ctrl+C hoặc lỗi vẫn ngắt
+PWM và cơ cấu có thể tự khép lúc đó. Không chạy probe hoặc chương trình GPIO
+khác đồng thời. Nếu càng chạm cứng,
 giật mạnh hoặc không đi theo các góc trung gian, dừng thử: giới hạn cơ khí, nguồn
 và phản ứng servo vẫn cần kiểm tra. Mốc 100° là góc yêu cầu theo quan sát người dùng,
 chưa phải góc đo hoặc bảo đảm an toàn cơ khí.

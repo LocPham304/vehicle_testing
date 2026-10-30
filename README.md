@@ -744,7 +744,8 @@ khởi tạo. Nếu càng không ở vị trí này, lần phát xung đầu v�
 cập nhật một góc; đường chuyển góc tăng tốc và giảm tốc nhẹ ở hai đầu.
 Thời gian phải hữu hạn và **ít nhất 2 giây** (`CLAW_MIN_MOVE_SECONDS`), không nhận
 thêm góc hoặc PWM. Có thể dùng `mo_cang 4`/`dong_cang 4` để chia bước chậm hơn.
-Sau góc cuối, chờ thêm `CLAW_SETTLE_SECONDS = 0.1` giây trước khi ngắt PWM;
+Sau góc cuối, chờ thêm `CLAW_SETTLE_SECONDS = 0.1` giây; khi mở thì giữ PWM,
+khi đóng thì mặc định ngắt PWM.
 lệnh 2 giây mất ít nhất khoảng **2,1 giây** tổng cộng, có thể dài hơn do lịch chạy hệ điều hành.
 Thời gian này điều khiển lịch gửi góc yêu cầu; chưa xác nhận tốc độ cơ cấu thật.
 `probe_servo.py` vẫn gửi góc trực tiếp, không áp dụng cách chuyển từng bước này.
@@ -798,11 +799,14 @@ phần cứng hoặc truy cập sysfs. Phương án này không cần daemon pig
 pigpio có hạn chế trên các bản Debian mới.
 Không chạy `probe_servo.py` hay chương trình servo khác cùng lúc với `main.py`.
 
-Mặc định **`CLAW_HOLD_POSITION = False`**: hết thời gian thì gửi duty 0 để ngắt
-PWM riêng BCM 12. Càng không giữ lực kẹp liên tục và vật đang kẹp có thể tuột.
-Nâng/hạ BCM 18 cũng mặc định tắt PWM sau hành trình. `CLAW_HOLD_POSITION = True` giữ PWM sau thao tác;
-chỉ dùng sau khi kiểm tra nguyên nhân giật thực tế. Người dùng từng xác nhận
-càng hết giật ngay khi Ctrl+C tắt PWM; chưa xác định nguyên nhân phần cứng.
+Mặc định **`CLAW_HOLD_OPEN_POSITION = True`**: sau lệnh mở, tiếp tục phát PWM
+ở góc đích để duy trì vị trí mở. Người dùng đã xác nhận càng tự đóng sau dòng
+báo ngắt PWM cuối lượt. Giữ mở kết thúc khi chạy `dong_cang`, hoặc khi chương
+trình thoát/bị lỗi/ngắt; Ctrl+C vẫn tắt PWM nên cơ cấu có thể tự khép lúc đó.
+`CLAW_HOLD_POSITION = False` giữ hành vi nhả PWM sau lệnh đóng, không duy trì
+lực kẹp liên tục; vật đang kẹp có thể tuột. Nâng/hạ BCM 18 vẫn mặc định tắt PWM
+sau hành trình. Đặt `CLAW_HOLD_OPEN_POSITION=False` để nhả cả sau lệnh mở;
+`CLAW_HOLD_POSITION=True` sẽ giữ PWM ở cả hai mốc.
 
 Nếu góc yêu cầu cuối đã trùng đích (gồm lệnh đóng ngay sau khởi động), bỏ qua thao
 tác và không phát lại PWM. Sau khi nhả PWM, vị trí thật có thể thay đổi do ngoại lực;
