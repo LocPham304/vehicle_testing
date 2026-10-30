@@ -107,6 +107,38 @@ quay theo độ ước lượng, LED text theo font đang có; không chạy Pyt
 
 ## Kiểm chứng trên máy phát triển
 
+### Unit test, không cần Pi hoặc mạng thật
+
+Chạy từ **thư mục cha** của `vehicle_testing`; dùng Python đã có sẵn, không cần
+cài thư viện test. Không bật receiver phần cứng để chạy unit test.
+
+Trên Pi:
+
+```bash
+cd ~/vehicle_testing/..
+python3 -B -m unittest vehicle_testing.tests.test_wifi_udp.UdpControlTests vehicle_testing.tests.test_wifi_udp_transport -v
+```
+
+Trên PowerShell, từ thư mục `raspberry-py` chứa `vehicle_testing`:
+
+```powershell
+python -B -m unittest vehicle_testing.tests.test_wifi_udp.UdpControlTests vehicle_testing.tests.test_wifi_udp_transport -v
+```
+
+- `tests/test_wifi_udp.py`: payload bắt được từ BE, upload không tự chạy,
+  UUID, IP tự nhận/cố định, EXEC trùng/sai nguồn, UTF-8 và hủy chạy.
+- `tests/test_wifi_udp_transport.py`: socket giả, timeout/gói lỗi rồi khôi phục,
+  tiếp tục nhận khi worker đang chạy, cấu hình mặc định `0.0.0.0:50000`, lỗi
+  cổng/config, worker lỗi/đóng/khởi động lại và mô phỏng 30 xe nhận broadcast
+  nhưng chỉ UUID được chọn chạy.
+
+Unit test không mở socket mạng thật, không chạm GPIO/motor, không cần BE.
+Ca 30 xe là mô phỏng bộ lọc UUID, không phải đo tải Wi-Fi lớp học. Ca bind mọi
+IP kiểm tra cấu hình receiver, không thay địa chỉ DHCP thật của Pi. Log WARNING
+trong các ca gửi sai IP là kết quả được kiểm tra, không phải test thất bại.
+
+### Tích hợp UDP loopback tùy chọn
+
 ```powershell
 $env:RUN_WIFI_UDP_INTEGRATION='1'
 python -B -m unittest vehicle_testing.tests.test_wifi_udp -v
