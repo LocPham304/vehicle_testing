@@ -1,4 +1,8 @@
-"""Receive external BE packets: UUID + LF + source, or UUID + LF + EXEC."""
+"""Receive BE packets (UUID + LF + source/EXEC), learning the uploader IP.
+
+Default: learn the latest valid upload's source IP; --sender-ip optionally pins
+the allowed IPv4 sender. This associates EXEC with an upload, not authentication.
+"""
 
 import argparse
 from functools import partial
@@ -17,7 +21,7 @@ MAX_DATAGRAM_BYTES = 65507  # Maximum IPv4 UDP payload, including our UUID heade
 
 
 class UdpReceiver:
-    """One complete script per datagram; each valid upload arms one EXEC."""
+    """Learn the latest valid uploader; each complete script arms one EXEC."""
 
     def __init__(self, device_id, *, executor=None, sender_ip=None, notify=None):
         if not isinstance(device_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", device_id):
@@ -26,6 +30,7 @@ class UdpReceiver:
             sender_ip = str(ipaddress.IPv4Address(sender_ip))
         self.device_id, self.sender_ip = device_id, sender_ip
         self._header = device_id.encode("ascii")
+        self._upload_sender_ip = None
         self._armed = self._closed = False
         self._lock = RLock()
         self.session = RobotSession(executor=executor, notify=notify or self._log_event)
@@ -45,6 +50,10 @@ class UdpReceiver:
             if not separator or header != self._header:
                 return None  # Other robots must not invalidate this robot's upload.
             if body == b"EXEC":
+                if self._upload_sender_ip is not None and sender[0] != self._upload_sender_ip:
+                    logger.warning("Bo qua EXEC %s tu %s: khac BE da upload (%s).",
+                                   self.device_id, sender[0], self._upload_sender_ip)
+                    return None
                 if not self._armed:
                     reply = {"ok": False, "error": "Can upload moi truoc EXEC; moi upload chi chay mot lan."}
                 else:
@@ -56,6 +65,7 @@ class UdpReceiver:
             if self.session.dispatch({"action": "status"})["status"] == "executing":
                 return {"ok": False, "error": "Robot dang chay; khong nhan upload moi."}
             self._armed = False
+            self._upload_sender_ip = None
             if len(data) > MAX_DATAGRAM_BYTES:
                 self.session.reset()
                 reply = {"ok": False, "error": "Khung UDP qua lon; can kich ban tron ven trong mot goi."}
@@ -68,6 +78,11 @@ class UdpReceiver:
                 else:
                     reply = self.session.dispatch({"action": "upload", "code": code})
                     self._armed = bool(reply.get("ok"))
+                    if self._armed:
+                        self._upload_sender_ip = sender[0]
+                        if self.sender_ip is None:
+                            logger.info("UDP tu dong nhan BE %s cho UUID=%s; cho EXEC tu BE nay.",
+                                        sender[0], self.device_id)
             logger.info("UDP UPLOAD %s tu %s (%s byte): %s", self.device_id, sender, len(body), reply)
             return reply
 
@@ -75,6 +90,7 @@ class UdpReceiver:
         with self._lock:
             self._closed = True
             self._armed = False
+            self._upload_sender_ip = None
         self.session.close()
 
     def __enter__(self):
@@ -100,7 +116,7 @@ def main(argv=None):
     parser.add_argument("--device-id", required=True, help="UUID rieng cua xe, vi du robot-003")
     parser.add_argument("--host", default="0.0.0.0", help="Dia chi lang nghe tren Pi")
     parser.add_argument("--port", type=int, default=50000)
-    parser.add_argument("--sender-ip", help="Chi nhan tu IPv4 cua BE, vi du 192.168.1.93")
+    parser.add_argument("--sender-ip", help="Tuy chon gioi han IPv4 BE; mac dinh tu nhan IP tu upload hop le")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--run", action="store_true", help="Chay motor/LED that khi nhan EXEC")
     mode.add_argument("--dry-run", action="store_true", help="Mo phong runner, khong dung GPIO")
@@ -118,7 +134,7 @@ def main(argv=None):
             connection.bind((args.host, args.port))
             logger.info("Wi-Fi UDP %s tai %s:%s; UUID=%s; sender=%s.",
                         "hardware" if args.run else "dry-run" if args.dry_run else "preview",
-                        args.host, args.port, args.device_id, args.sender_ip or "any")
+                        args.host, args.port, args.device_id, args.sender_ip or "auto (tu upload hop le)")
             logger.info("Upload KHONG tu chay; EXEC chay mot lan; upload lai de chay tiep. Ctrl+C de dung.")
             serve_datagrams(connection, receiver, Event())
         return 0

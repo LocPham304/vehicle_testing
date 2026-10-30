@@ -123,15 +123,24 @@ BE thực tế gửi `UUID\n<kịch bản>` và `UUID\nEXEC` qua UDP 50000. Trê
 ```sh
 cd ~/vehicle_testing
 source .venv/bin/activate
-python3 wifi_udp_receiver.py --device-id robot-003 --sender-ip 192.168.1.93 --dry-run
+python3 wifi_udp_receiver.py --device-id robot-003 --dry-run
 ```
 
 Trên web chọn Wi-Fi, **Upload Code**, rồi **Chạy Code**. Thay `--dry-run` bằng
-`--run` để chạy phần cứng. Mỗi upload cho phép một EXEC; chạy tiếp cần upload
+`--run` để chạy phần cứng. Không cần nhập IP Pi/BE: receiver nghe trên mọi IPv4
+của Pi và tự nhận IP BE từ gói upload đúng UUID, hợp lệ. EXEC phải đến từ BE vừa
+upload. BE đổi IP thì upload lại, không cần khởi động lại receiver.
+Mỗi upload cho phép một EXEC; chạy tiếp cần upload
 lại. Chỉ mở một receiver điều khiển phần cứng. Adapter này chưa có gói dò xe,
 ACK, STOP hay heartbeat với BE; hiện hỗ trợ code trọn vẹn trong một datagram.
 Xem [giao thức và cách thử UDP](docs/WIFI_UDP.md) trước khi dùng kịch bản nhiều
 mảnh. Các công cụ HTTP dưới đây vẫn giữ nguyên.
+
+Tự nhận IP chưa xác thực hay cấp quyền độc quyền cho học sinh: khi xe rảnh,
+máy trong LAN biết UUID có thể upload hợp lệ để thay bản chờ và IP BE trước.
+EXEC từ IP BE cũ bị bỏ qua, log ghi IP gửi và IP đã upload. `--sender-ip` chỉ
+thêm bộ lọc nguồn, không chống giả mạo IP. Giao thức vẫn chưa có request ID để
+ràng buộc EXEC với đúng phiên bản kịch bản hoặc loại bỏ mọi gói trễ/phát lại.
 
 ## Kết nối Wi-Fi bằng HTTP trực tiếp
 

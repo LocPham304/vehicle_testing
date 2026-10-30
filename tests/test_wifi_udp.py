@@ -86,6 +86,81 @@ class UdpControlTests(unittest.TestCase):
         self.send(CAPTURED_CODE)
         self.assertTrue(self.send(CAPTURED_EXEC, (BE[0], 60000))["ok"])
 
+    def automatic_control(self):
+        from vehicle_testing.connections.wifi.udp_receiver import UdpReceiver
+        control = UdpReceiver("robot-003", executor=self.control.session.executor)
+        self.addCleanup(control.close)
+        self.addCleanup(self.release.set)
+        return control
+
+    def test_automatic_sender_uses_valid_upload_without_manually_configured_ip(self):
+        control = self.automatic_control()
+        self.assertFalse(control.handle_datagram(CAPTURED_EXEC, BE)["ok"])
+        self.assertTrue(control.handle_datagram(CAPTURED_CODE, BE)["ok"])
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(control.handle_datagram(CAPTURED_EXEC, ("192.168.1.94", 60000)))
+        self.assertEqual(self.calls, [])
+        self.assertTrue(control.handle_datagram(CAPTURED_EXEC, (BE[0], 60000))["ok"])
+        self.assertTrue(self.started.wait(1))
+
+    def test_automatic_sender_follows_new_upload_after_be_changes_network(self):
+        control = self.automatic_control()
+        self.assertTrue(control.handle_datagram(CAPTURED_CODE, BE)["ok"])
+        self.assertTrue(control.handle_datagram(CAPTURED_EXEC, BE)["ok"])
+        self.assertTrue(self.started.wait(1))
+        self.release.set()
+        control.session.wait(1)
+        new_be = ("10.0.0.25", 40000)
+        self.assertTrue(control.handle_datagram(CAPTURED_CODE, new_be)["ok"])
+        self.assertIsNone(control.handle_datagram(CAPTURED_EXEC, BE))
+        self.assertTrue(control.handle_datagram(CAPTURED_EXEC, new_be)["ok"])
+        control.session.wait(1)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_automatic_sender_ignores_wrong_robot_and_keeps_current_uploader(self):
+        control = self.automatic_control()
+        other_be = ("192.168.1.94", 50001)
+        control.handle_datagram(CAPTURED_CODE, BE)
+        self.assertIsNone(control.handle_datagram(b"robot-004\nEXEC", other_be))
+        self.assertIsNone(control.handle_datagram(CAPTURED_EXEC, other_be))
+        self.assertTrue(control.handle_datagram(CAPTURED_EXEC, BE)["ok"])
+        self.assertTrue(self.started.wait(1))
+
+    def test_wrong_sender_exec_logs_reason_and_preserves_pending_program(self):
+        control = self.automatic_control()
+        other_be = ("192.168.1.94", 50001)
+        control.handle_datagram(CAPTURED_CODE, BE)
+        with self.assertLogs("vehicle_testing.connections.wifi.udp_receiver", level="WARNING") as logs:
+            self.assertIsNone(control.handle_datagram(CAPTURED_EXEC, other_be))
+        message = " ".join(logs.output)
+        for value in ("Bo qua EXEC", "robot-003", other_be[0], BE[0]):
+            self.assertIn(value, message)
+        self.assertEqual(self.calls, [])
+        self.assertTrue(control.handle_datagram(CAPTURED_EXEC, BE)["ok"])
+        self.assertTrue(self.started.wait(1))
+
+    def test_sender_is_checked_before_armed_state_once_an_uploader_is_known(self):
+        from vehicle_testing.connections.wifi.udp_receiver import UdpReceiver
+        with UdpReceiver("robot-003") as control:
+            control.handle_datagram(CAPTURED_CODE, BE)
+            self.assertEqual(control.handle_datagram(CAPTURED_EXEC, BE)["status"], "preview")
+            with self.assertLogs("vehicle_testing.connections.wifi.udp_receiver", level="WARNING"):
+                self.assertIsNone(control.handle_datagram(CAPTURED_EXEC, ("192.168.1.94", 50001)))
+            self.assertFalse(control.handle_datagram(CAPTURED_EXEC, BE)["ok"])
+
+    def test_new_upload_from_another_ip_replaces_pending_script_while_idle(self):
+        control = self.automatic_control()
+        other_be = ("192.168.1.94", 50001)
+        self.assertTrue(control.handle_datagram(CAPTURED_CODE, BE)["ok"])
+        replacement = b'robot-003\nrobot.sendCmd("turn_right:30")'
+        self.assertTrue(control.handle_datagram(replacement, other_be)["ok"])
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(control.handle_datagram(CAPTURED_EXEC, BE))
+        self.assertTrue(control.handle_datagram(CAPTURED_EXEC, other_be)["ok"])
+        self.assertTrue(self.started.wait(1))
+        self.assertEqual(self.calls[0][0].events[0].command, "turn_right")
+        self.assertEqual(self.calls[0][0].events[0].value, 30)
+
     def test_invalid_owned_replacement_disarms_previous_program(self):
         for body in (b"", b"\xff", b'robot.sendCmd("unknown:1")', b"EXEC\n",
                      b"exec", b"EXEC ", b"STOP", b"x" * 65536):
@@ -130,6 +205,8 @@ class UdpControlTests(unittest.TestCase):
         self.control.close()
         self.assertTrue(self.calls[0][1].is_set())
         self.assertFalse(self.send(CAPTURED_CODE)["ok"])
+        self.assertFalse(self.send(CAPTURED_EXEC)["ok"])
+        self.assertEqual(len(self.calls), 1)
 
     def test_default_mode_only_previews(self):
         from vehicle_testing.connections.wifi.udp_receiver import UdpReceiver

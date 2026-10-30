@@ -88,12 +88,14 @@ Nhập `upload`, rồi `run` tại dấu nhắc `usb>`.
 Trên Pi sau khi cập nhật source:
 
 ```bash
-python3 wifi_udp_receiver.py --device-id robot-003 --sender-ip 192.168.1.93 --run
+python3 wifi_udp_receiver.py --device-id robot-003 --run
 ```
 
 Trên web chọn Wi-Fi, **Upload Code → Chạy Code**. Không mở `wifi_client.py`.
 Muốn thử mô phỏng thì thay `--run` bằng `--dry-run`. Receiver nghe UDP 50000,
-lọc UUID và IP BE; mỗi upload cho phép một EXEC. Chạy lại cần upload lại.
+lọc UUID, tự nhận IP BE từ upload hợp lệ; không cần nhập IP. EXEC phải đến từ
+BE vừa upload. Khi BE đổi IP, upload lại để tự nhận địa chỉ mới.
+Mỗi upload cho phép một EXEC. Chạy lại cần upload lại.
 Chưa có dò xe/ACK/STOP/heartbeat từ BE; chỉ hỗ trợ code trong một datagram.
 Xem [chi tiết và giới hạn UDP](WIFI_UDP.md).
 

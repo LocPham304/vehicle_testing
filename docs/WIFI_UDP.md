@@ -33,7 +33,7 @@ trước khi chuyển sang UDP; hiện chưa có khóa điều khiển chung gi�
 ```bash
 cd ~/vehicle_testing
 source .venv/bin/activate
-python3 wifi_udp_receiver.py --device-id robot-003 --sender-ip 192.168.1.93 --dry-run
+python3 wifi_udp_receiver.py --device-id robot-003 --dry-run
 ```
 
 Trên giao diện chọn phương thức Wi-Fi, nhấn **Upload Code**, rồi **Chạy Code**.
@@ -44,12 +44,34 @@ và `done`. Với `--dry-run` chỉ mô phỏng, xe không di chuyển.
 Chạy motor/LED thật: Ctrl+C receiver mô phỏng, rồi mở lại:
 
 ```bash
-python3 wifi_udp_receiver.py --device-id robot-003 --sender-ip 192.168.1.93 --run
+python3 wifi_udp_receiver.py --device-id robot-003 --run
 ```
 
 Upload lại từ web, rồi Chạy Code. Mặc định không có cờ là preview, EXEC chỉ in
-kịch bản. `--sender-ip` tùy chọn, lọc theo IPv4 nguồn BE (không lọc cổng nguồn).
-Khi BE đổi IP, cập nhật cờ này. Lọc IP không phải xác thực người dùng.
+kịch bản.
+
+### Tự nhận địa chỉ BE, không nhập IP thủ công
+
+Mặc định receiver nghe `0.0.0.0:50000`, nên không cần biết trước IPv4 của Pi
+hay BE. Gói upload đúng UUID, parse/kiểm tra hợp lệ sẽ ghi nhận IP BE gửi gói;
+log hiện `UDP tu dong nhan BE ...`. EXEC chỉ được nhận từ IP vừa upload, cổng
+nguồn được phép thay đổi. Upload không tự chạy.
+
+EXEC khác IP BE đã upload bị bỏ qua và có log WARNING chứa UUID, IP gửi và
+IP mong đợi. Khi đã biết IP uploader, kiểm tra IP trước trạng thái cho phép
+chạy; log kết quả ở Pi, không gửi ACK/trạng thái qua mạng. Chưa upload hợp lệ
+thì chưa có IP tin cậy; EXEC chỉ được ghi nhận là cần upload trước.
+
+Khi đổi mạng hoặc DHCP đổi địa chỉ BE, đưa Pi và BE vào cùng mạng có broadcast,
+rồi Upload Code lại: receiver tự ghi nhận IP mới, không phải sửa lệnh hay
+khởi động lại. IP cũ không được EXEC bản mới. Gói sai UUID không thay đổi BE
+đang giữ bản chờ. Không học IP từ EXEC hoặc upload không hợp lệ. Đây là tự nhận
+nguồn từ dữ liệu đến, chưa phải giao thức dò/ACK trước upload trên giao diện.
+
+Nếu muốn cố định BE thì vẫn có tùy chọn `--sender-ip <IPv4>`, lọc nguồn trước
+khi xử lý mọi gói. Chỉ khi dùng tùy chọn này mới cần cập nhật cờ nếu IP BE đổi.
+Lọc IP không phải xác thực người dùng. Phía BE vẫn cần gửi tới địa chỉ broadcast
+phù hợp mạng hiện tại; firmware không thể sửa địa chỉ đích trong BE bên ngoài.
 
 Upload chỉ kiểm tra/lưu RAM, không tự chạy. Mỗi upload hợp lệ cho phép EXEC
 **một lần**; muốn chạy tiếp cần Upload Code lại. EXEC trước upload hoặc lặp lại
@@ -59,6 +81,11 @@ cơ chế runner hiện có và đóng socket. Khởi động lại receiver ph�
 
 ## Giới hạn của giao thức hiện tại
 
+- Tự nhận IP không xác thực BE/học sinh hay cấp quyền điều khiển độc quyền.
+  Khi xe rảnh, bất kỳ máy LAN biết UUID và gửi kịch bản hợp lệ đều có thể thay
+  bản chờ; **upload hợp lệ gần nhất** xác định IP được EXEC bản đó. Nếu IP khác,
+  EXEC từ BE cũ bị bỏ qua, không chạy bản thay thế. `--sender-ip` chỉ lọc IPv4
+  nguồn; IP có thể bị giả mạo nên cờ này không thay thế xác thực/phân quyền.
 - Chỉ hỗ trợ **toàn bộ kịch bản trong một datagram**. BE đang có `split(body)`
   nhưng chưa gửi mã bản tin, số thứ tự/tổng số mảnh. Receiver không ghép mảnh.
   Một mảnh tình cờ là kịch bản hợp lệ không thể phân biệt với bản hoàn chỉnh;
