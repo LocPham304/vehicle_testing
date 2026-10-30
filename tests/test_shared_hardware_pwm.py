@@ -124,6 +124,24 @@ class SharedHardwarePWM0Tests(unittest.TestCase):
         self.hw_pwm.change_duty_cycle.side_effect = lambda d: self.events.append(("duty", round(d, 4)))
         self.hw_pwm.stop.side_effect = lambda: self.events.append(("stop",))
 
+    def test_lift_up_down_keeps_pwm_continuous_until_controller_closes(self):
+        with patch.dict("sys.modules", {"rpi_hardware_pwm": self.hardware}), \
+                patch.object(self.servos, "find_hardware_pwm_chip", return_value=1), \
+                patch.object(self.servos, "SERVO_CALIBRATED", True):
+            bus = self.servos.SharedHardwarePWM0(mux_factory=self.mux_cls)
+            self.addCleanup(bus.close)
+            hand = self.servos.HandController(bus.lift_output, sleeper=lambda _: None)
+            self.addCleanup(hand.close)
+            hand.hand_up(4)
+            hand.hand_down(4)
+            self.assertEqual(self.hw_pwm.start.call_count, 1)
+            # Only the initialization stop, with no release between movements.
+            self.assertEqual(self.hw_pwm.stop.call_count, 1)
+            self.assertEqual([event for event in self.events if event[0] == "route"], [("route", 18)])
+            self.assertAlmostEqual(self.hw_pwm.change_duty_cycle.call_args.args[0], 2.25)
+            hand.close()
+            self.assertEqual(self.hw_pwm.stop.call_count, 2)
+
     def test_lazy_creation_and_glitch_free_handover_between_lift_and_claw(self):
         with patch.dict("sys.modules", {"rpi_hardware_pwm": self.hardware}), \
                 patch.object(self.servos, "find_hardware_pwm_chip", return_value=1), \

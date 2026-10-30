@@ -551,6 +551,8 @@ class HandController:
             if not SERVO_HOLD_POSITION:
                 self._output.release()
                 logger.info("Da gui yeu cau tat PWM nang/ha; khong giu luc sau lenh.")
+            else:
+                logger.info("Giu PWM nang/ha tai goc yeu cau %g do giua cac luot.", angle)
         except (Exception, KeyboardInterrupt):
             self._angle = None
             if self._output is not None:

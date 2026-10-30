@@ -686,17 +686,23 @@ người dùng đã thử; đây là giới hạn phần mềm, không xác nh�
 là hành trình cơ khí cho phép.
 
 Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;
-chương trình gửi lệnh dừng bánh trước khi điều khiển tay. Trước mỗi lệnh nâng/hạ
-hoặc mở/đóng càng, `SharedHardwarePWM0` dừng `PWM0_0`, khóa chân còn lại ở mức `0V`
-và định tuyến xung phần cứng sang đúng chân đang chạy.
+chương trình gửi lệnh dừng bánh trước khi điều khiển tay. Khi đổi từ nâng/hạ
+sang càng kẹp hoặc ngược lại, `SharedHardwarePWM0` dừng `PWM0_0`, khóa chân còn
+lại ở mức `0V` và định tuyến xung phần cứng sang đúng chân đang chạy.
 Giữ PWM chạy giữa các bước, chỉ đổi duty, bỏ qua xung nguyên µs trùng nhau.
 
-PWM servo nâng/hạ mặc định được tắt sau mỗi hành trình (`SERVO_HOLD_POSITION=False`),
-sau khoảng chờ cuối 0,1 giây, để không tiếp tục giữ cứng tay. Servo càng cũng
-mặc định ngắt PWM sau lệnh như mô tả dưới đây. Cơ cấu có thể hạ theo tải khi mất
-lực giữ. Nếu di chuyển tay bằng tay, chương trình không cập nhật được góc thực;
-cần chuẩn bị lại mốc hạ và khởi động lại trước khi chạy tiếp.
-Đặt `SERVO_HOLD_POSITION=True` khi cần giữ lực và đã xác nhận cơ cấu phù hợp.
+PWM nâng/hạ mặc định **giữ giữa các lượt** (`SERVO_HOLD_POSITION=True`). Đổi này
+nhằm giảm việc tay bị nhả lực ở cuối lượt, xê dịch do tải rồi bật về góc phần mềm
+đã nhớ ở lượt tiếp theo. Chuỗi chỉ có `nang`/`ha` không tắt/bật lại PWM giữa
+các lượt; hai mốc 450/1400 µs và nhịp nội suy 20 ms giữ nguyên. Đây là sửa một
+nguyên nhân phần mềm có thể góp phần gây giật, chưa chứng minh hết giật trên xe.
+
+BCM 18/12 dùng chung PWM0: chạy càng kẹp vẫn ngắt lực giữ tay nâng/hạ; **không
+giữ độc lập hai servo cùng lúc**. Servo kẹp vẫn nhả sau lệnh. Không suy ra góc
+thật từ góc phần mềm nếu tay đã tụt hoặc bị dịch chuyển; chuẩn bị lại mốc hạ
+và khởi động lại trước khi thử. Đặt `SERVO_HOLD_POSITION=False` nếu chủ động
+muốn nhả nâng/hạ sau mỗi lượt; khi đó tay có thể tụt theo tải và có thể giật khi
+nhận lại góc đã nhớ. Giữ PWM cũng không sửa được mốc xung ép vào chặn cơ khí.
 `dung` vẫn hủy kịch bản đang soạn.
 Khi `thoat`, EOF, Ctrl+C hoặc lỗi, chương trình tắt PWM và giải phóng riêng từng GPIO servo đã mở;
 sau đó servo không còn được yêu cầu giữ lực và tay có thể hạ theo tải.

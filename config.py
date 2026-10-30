@@ -52,10 +52,11 @@ SERVO_UP_PULSE_US = 1400.0  # Xung vị trí nâng (duty ~7%, tránh chạm gi�
 SERVO_MOVE_SECONDS = 2.0  # Thời gian di chuyển giữa hai đầu
 SERVO_MIN_MOVE_SECONDS = 2.0  # Thời gian tối thiểu, tránh di chuyển quá nhanh
 SERVO_UPDATE_INTERVAL_SECONDS = 0.02  # Chu kỳ cập nhật góc
-SERVO_SETTLE_SECONDS = 0.1  # Chờ ổn định trước khi nhả
-# Nhả servo sau khi di chuyển để có thể chỉnh tay bằng tay.
-# Tắt PWM = không giữ lực, tay có thể tụt xuống nếu có tải.
-SERVO_HOLD_POSITION = False
+SERVO_SETTLE_SECONDS = 0.1  # Chờ ổn định ở đích trước khi kết thúc lệnh
+# Giữ xung giữa các lượt nâng/hạ để tay không tụt rồi bật về góc đã nhớ.
+# Thoát/lỗi vẫn tắt PWM. Chuyển sang càng BCM 12 cũng ngắt giữ tay vì chung PWM0.
+# False = chủ động nhả lực sau mỗi lượt; tay có thể tụt nếu có tải.
+SERVO_HOLD_POSITION = True
 
 # Kẹp: góc giảm thì kẹp mở.
 CLAW_MIN_ANGLE = 0.0
