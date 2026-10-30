@@ -1,5 +1,8 @@
 # Điều khiển qua Wi-Fi bằng HTTP trực tiếp
 
+Nếu nhận broadcast từ FE/BE (`UUID\ncode`, `UUID\nEXEC` tại UDP 50000), dùng
+[receiver UDP](WIFI_UDP.md). Tài liệu bên dưới dành riêng cho công cụ HTTP.
+
 Code triển khai: `connections/wifi/receiver.py` và `connections/wifi/client.py`.
 Các file `wifi_receiver.py` và `wifi_client.py` ở ngoài cùng vẫn dùng để chạy
 các lệnh trong hướng dẫn này.

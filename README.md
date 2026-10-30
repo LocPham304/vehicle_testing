@@ -9,6 +9,9 @@ Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BC
 
 ## Cấu trúc
 
+Xem [bảng lệnh chạy qua cả bốn phương thức](docs/RUN_COMMANDS.md) để mở receiver
+trên Pi và gửi kịch bản từ laptop hoặc FE/BE.
+
 Code triển khai được gom theo chức năng. Các file chạy quen thuộc ở ngoài cùng
 chỉ gọi module tương ứng, nên những lệnh đang dùng trên Pi/laptop vẫn giữ nguyên.
 
@@ -38,8 +41,9 @@ vehicle_testing/
 │   │   ├── client.py            # Chạy trên laptop
 │   │   └── protocol.py          # JSON, giới hạn khung và chống lặp request
 │   ├── wifi/
-│       ├── receiver.py          # HTTP trực tiếp trên Pi
-│       └── client.py            # HTTP client trên laptop
+│   │   ├── receiver.py          # HTTP trực tiếp trên Pi
+│   │   ├── client.py            # HTTP client trên laptop
+│   │   └── udp_receiver.py      # Broadcast UUID + LF + code/EXEC từ BE
 │   └── bluetooth/
 │       ├── receiver.py          # Phiên Bluetooth Classic SPP trên Pi
 │       ├── bluez.py             # Đăng ký dịch vụ và nhận socket từ BlueZ
@@ -65,6 +69,7 @@ nguyên vị trí và cấu hình hiện tại. `examples/scratch_sample.txt` c�
 | `scratch_receiver.py` | `connections/mqtt/receiver.py` |
 | `usb_receiver.py`, `usb_client.py` | `connections/usb/receiver.py`, `client.py` |
 | `wifi_receiver.py`, `wifi_client.py` | `connections/wifi/receiver.py`, `client.py` |
+| `wifi_udp_receiver.py` | `connections/wifi/udp_receiver.py` |
 | `bluetooth_receiver.py`, `bluetooth_client.py` | `connections/bluetooth/receiver.py`, `client.py` |
 | `test_displays.py` | `hardware/displays/matrix.py` |
 | `seven_segment.py` | `hardware/displays/seven_segment.py` |
@@ -110,6 +115,23 @@ Upload không tự chạy. `stop` yêu cầu dừng, `status` xem trạng thái,
 bằng cách thay `--dry-run` trên Pi thành `--run`. Giữ công cụ gửi mở để có ping;
 mất tin hợp lệ trong 5 giây sẽ yêu cầu dừng và xóa kịch bản chờ. Không chạy đồng
 thời các receiver USB, MQTT, Wi-Fi, Bluetooth ở chế độ điều khiển phần cứng.
+
+## Nhận Wi-Fi UDP broadcast từ FE/BE
+
+BE thực tế gửi `UUID\n<kịch bản>` và `UUID\nEXEC` qua UDP 50000. Trên Pi:
+
+```sh
+cd ~/vehicle_testing
+source .venv/bin/activate
+python3 wifi_udp_receiver.py --device-id robot-003 --sender-ip 192.168.1.93 --dry-run
+```
+
+Trên web chọn Wi-Fi, **Upload Code**, rồi **Chạy Code**. Thay `--dry-run` bằng
+`--run` để chạy phần cứng. Mỗi upload cho phép một EXEC; chạy tiếp cần upload
+lại. Chỉ mở một receiver điều khiển phần cứng. Adapter này chưa có gói dò xe,
+ACK, STOP hay heartbeat với BE; hiện hỗ trợ code trọn vẹn trong một datagram.
+Xem [giao thức và cách thử UDP](docs/WIFI_UDP.md) trước khi dùng kịch bản nhiều
+mảnh. Các công cụ HTTP dưới đây vẫn giữ nguyên.
 
 ## Kết nối Wi-Fi bằng HTTP trực tiếp
 

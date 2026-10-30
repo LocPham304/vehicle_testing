@@ -21,6 +21,7 @@ LAUNCHERS = {
     "usb_receiver": "connections.usb.receiver",
     "wifi_client": "connections.wifi.client",
     "wifi_receiver": "connections.wifi.receiver",
+    "wifi_udp_receiver": "connections.wifi.udp_receiver",
     "bluetooth_client": "connections.bluetooth.client",
     "bluetooth_receiver": "connections.bluetooth.receiver",
 }
