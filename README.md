@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BCM 12 (mở 0°, đóng 100°).
+Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BCM 12 (mở 100°, đóng 0°).
 
 ## Cấu trúc
 
@@ -718,7 +718,8 @@ Giới hạn góc và chiều nâng/hạ vẫn cần xác nhận với cơ cấu
 ### Mở/khép càng qua GPIO BCM 12
 
 Servo càng 12G dùng **GPIO BCM 12**, đã được người dùng xác nhận bằng probe.
-Người dùng cũng xác nhận **giảm góc thì mở càng**, tăng góc thì khép càng.
+Theo xác nhận mới nhất trên xe: **tăng góc từ 0° lên 100° thì mở càng**,
+giảm từ 100° về 0° thì khép càng.
 
 ```text
 mo_cang 2
@@ -727,19 +728,18 @@ chay
 ```
 
 Chỉ dùng `mo_cang [giây]` và `dong_cang [giây]`, không cần lệnh đặt mốc góc.
-Mở yêu cầu **0°**, đóng yêu cầu **100°**: người dùng xác nhận 90° chưa khép kín,
-cần tăng tới khoảng 100°. Giới hạn riêng của càng là 0–100°.
+Mở yêu cầu **100°**, đóng yêu cầu **0°**. Giới hạn riêng của càng là 0–100°.
 Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGLE`,
 `CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ dùng riêng −10–80°.
 Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
 
-**Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 100°**, như người
-dùng đã xác nhận có thể chuẩn bị. `CLAW_START_ANGLE` là vị trí khởi đầu giả định;
+**Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 0°**.
+`CLAW_START_ANGLE` là vị trí khởi đầu giả định;
 chương trình không tự chạy càng về gốc, không đọc được góc và không phát PWM khi
 khởi tạo. Nếu càng không ở vị trí này, lần phát xung đầu vẫn có thể gây bật nhanh.
 
-`mo_cang 2` chia chuyển động yêu cầu **100° → 0° trong 2 giây**;
-`dong_cang 2` chuyển **0° → 100° trong 2 giây**. Bỏ số giây mặc định 2
+`mo_cang 2` chia chuyển động yêu cầu **0° → 100° trong 2 giây**;
+`dong_cang 2` chuyển **100° → 0° trong 2 giây**. Bỏ số giây mặc định 2
 (`CLAW_MOVE_SECONDS`). Mỗi khoảng tối đa 20 ms (`CLAW_UPDATE_INTERVAL_SECONDS`)
 cập nhật một góc; đường chuyển góc tăng tốc và giảm tốc nhẹ ở hai đầu.
 Thời gian phải hữu hạn và **ít nhất 2 giây** (`CLAW_MIN_MOVE_SECONDS`), không nhận

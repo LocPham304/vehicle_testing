@@ -4,8 +4,8 @@ Phần điều khiển servo hiện nằm trong `hardware/servos.py`, nhận di�
 trong `hardware/pwm.py`. `config.py`, `main.py` và `check_lift_pwm.py` vẫn dùng
 tại thư mục gốc như các lệnh dưới đây.
 
-Mở yêu cầu 0°, đóng yêu cầu 100°. Trước khi khởi động chương trình, chuẩn bị
-càng khép hoàn toàn như vị trí khởi đầu đã thống nhất. Chương trình không đo góc
+Mở yêu cầu 100° (0° → 100°), đóng yêu cầu 0° (100° → 0°). Trước khi khởi động
+chương trình, chuẩn bị càng khép ở mốc 0°. Chương trình không đo góc
 thật hoặc tự đưa về gốc. Bản sửa phát PWM bằng bộ PWM của kernel, giữ các bước
 chuyển góc nhẹ ở hai đầu; cần thử trên xe để xác nhận rung đã giảm.
 
@@ -97,7 +97,7 @@ Không chọn chip khác chỉ để bỏ qua thông báo lỗi. Phần mềm kh
 
 ## Thử sau khi cập nhật
 
-Với càng đang khép ở vị trí ban đầu, nhập:
+Với càng đang khép ở vị trí ban đầu 0°, nhập:
 
 ```text
 mo_cang 4

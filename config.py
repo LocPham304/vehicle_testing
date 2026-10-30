@@ -62,13 +62,12 @@ SERVO_SETTLE_SECONDS = 0.1
 # Release the lift after a move so it does not resist manual repositioning.
 # PWM off removes active support; the arm may lower under load.
 SERVO_HOLD_POSITION = False
-# Claw endpoints requested by the user: decreasing angle opens the gripper.
+# User-confirmed direction: increasing angle opens the gripper (0 -> 100).
 CLAW_MIN_ANGLE = 0.0
 CLAW_MAX_ANGLE = 100.0
-CLAW_OPEN_ANGLE = 0.0
-# User reports that 90 degrees leaves a gap; closing needs about 100 degrees.
-CLAW_CLOSE_ANGLE = 100.0
-# User will prepare the claw fully closed before starting the program.
+CLAW_OPEN_ANGLE = 100.0
+CLAW_CLOSE_ANGLE = 0.0
+# User will prepare the claw closed at 0 degrees before starting the program.
 CLAW_START_ANGLE = CLAW_CLOSE_ANGLE
 # Pi check with both overlays: pwmchip0 = GPIO 18; pwmchip1 = BCM hardware PWM.
 # BCM 12 still uses channel 0. Recheck with check_lift_pwm.py if numbering changes.
