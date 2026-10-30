@@ -13,7 +13,7 @@ from vehicle_testing.config import (
     SERVO_MIN_MOVE_SECONDS, SERVO_CALIBRATED, SERVO_HOLD_POSITION,
 )
 from vehicle_testing.hardware.servos import (
-    DryRunServoOutput, KernelPWMLiftOutput, HardwarePWMClawOutput, HandController, ClawController,
+    DryRunServoOutput, SharedHardwarePWM0, HandController, ClawController,
     validate_hand_seconds, validate_claw_seconds,
 )
 from vehicle_testing.hardware.motors import (
@@ -218,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
 
     controller = None
     output = None
+    pwm0 = None
     hand = None
     claw = None
     result = 0
@@ -225,10 +226,12 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("MO PHONG - khong dieu khien phan cung" if args.dry_run else "CHE DO PHAN CUNG")
         output = DryRunOutput() if args.dry_run else PCA9685Output()
         controller = MotorController(output)
-        hand = HandController(DryRunServoOutput if args.dry_run else KernelPWMLiftOutput,
+        pwm0 = None if args.dry_run else SharedHardwarePWM0()
+        hand = HandController(DryRunServoOutput if args.dry_run else pwm0.lift_output,
                               calibration_required=not args.dry_run)
-        claw_output = DryRunServoOutput if args.dry_run else HardwarePWMClawOutput
-        claw = ClawController(lambda: claw_output(pin=CLAW_BCM_PIN))
+        claw = ClawController(
+            (lambda: DryRunServoOutput(pin=CLAW_BCM_PIN)) if args.dry_run else pwm0.claw_output
+        )
         controller.stop()
         run_session(controller, hand, claw)
     except KeyboardInterrupt:
@@ -252,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = 1
         finally:
             # Always attempt servo cleanup, even if motor cleanup is interrupted.
-            for servo in (hand, claw):
+            for servo in (hand, claw, pwm0):
                 try:
                     if servo is not None:
                         servo.close()

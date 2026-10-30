@@ -193,17 +193,18 @@ class ClawTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "khoi dong lai"):
             claw.grip()
 
-    def test_main_uses_separate_kernel_pwm_providers_and_closes_both(self):
+    def test_main_shares_hardware_pwm0_across_lift_and_claw_and_closes_mux(self):
         main = importlib.import_module("vehicle_testing.cli.robot")
         gpio = Mock(BCM=11, OUT=0)
         hardware = Mock()
-        lift_pwm, claw_pwm = Mock(), Mock()
-        hardware.HardwarePWM.side_effect = lambda **kwargs: lift_pwm if kwargs["chip"] == 0 else claw_pwm
+        pwm0 = hardware.HardwarePWM.return_value
+        reg_buf = bytearray(64)
+        mux = self.module.BCM2711PinMux(reg_buf)
         real_lift, real_claw = main.HandController, main.ClawController
         with patch.dict("sys.modules", {"RPi.GPIO": gpio, "rpi_hardware_pwm": hardware}), \
                 patch.object(main, "PCA9685Output"), \
-                patch.object(self.module, "find_gpio_pwm_chip", return_value=0), \
-                patch.object(self.module, "validate_claw_pwm_chip"), \
+                patch.object(self.module, "find_hardware_pwm_chip", return_value=1), \
+                patch.object(self.module, "BCM2711PinMux", return_value=mux), \
                 patch.object(main, "HandController", side_effect=lambda factory, **kwargs: real_lift(factory, sleeper=lambda _: None, **kwargs)), \
                 patch.object(main, "ClawController", side_effect=lambda factory: real_claw(factory, sleeper=lambda _: None)), \
                 patch("builtins.input", side_effect=["nang 2", "mo_cang", "chay", "thoat"]), \
@@ -211,14 +212,11 @@ class ClawTests(unittest.TestCase):
             self.assertEqual(main.main([]), 0)
         gpio.PWM.assert_not_called()
         gpio.cleanup.assert_not_called()
-        self.assertEqual(hardware.HardwarePWM.call_count, 2)
-        hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=0)
-        hardware.HardwarePWM.assert_any_call(pwm_channel=0, hz=50, chip=1)
-        self.assertTrue(lift_pwm.start.called)
-        self.assertTrue(claw_pwm.start.called)
-        self.assertEqual(claw_pwm.change_duty_cycle.call_args.args, (2.5,))
-        self.assertTrue(lift_pwm.stop.called)
-        self.assertTrue(claw_pwm.stop.called)
+        hardware.HardwarePWM.assert_called_once_with(pwm_channel=0, hz=50, chip=1)
+        self.assertEqual(pwm0.start.call_count, 2)
+        self.assertEqual(pwm0.change_duty_cycle.call_args.args, (2.5,))
+        self.assertTrue(pwm0.stop.called)
+        self.assertTrue(mux._closed)
 
     def test_cleanup_attempts_claw_when_lift_cleanup_fails(self):
         main = importlib.import_module("vehicle_testing.cli.robot")
