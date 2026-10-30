@@ -9,7 +9,7 @@ from dataclasses import dataclass
 I2C_ADDRESS = 0x40
 PWM_FREQUENCY_HZ = 1000
 DEFAULT_SPEED = 0.5  # PWM fraction used whenever a movement omits its speed.
-DIRECTION_CHANGE_DELAY_SECONDS = 0.5
+DIRECTION_CHANGE_DELAY_SECONDS = 0.75
 
 # BCM GPIO numbers from the standalone ultrasonic sensor test.
 # GPIO8/GPIO11 must be free of SPI0 or other users.
@@ -26,14 +26,14 @@ SEVEN_SEGMENT_BRIGHTNESS = 2
 # Trial wheel compensation requested by the user; 1.0 restores untrimmed PWM.
 # Applied to every wheel movement, including turns, in both motor directions.
 # Effective PWM = requested PWM * gain. Each gain must be in (0, 1].
-WHEEL_GAIN = {"FR": 0.90, "FL": 1.00, "RL": 1.00, "RR": 1.00}
+WHEEL_GAIN = {"FR": 1.00, "FL": 1.00, "RL": 1.00, "RR": 1.00}
 
 # Open-loop turning: these are initial estimates from the old firmware,
 # NOT measured angles on this vehicle. Calibrate each side on the actual floor.
 # Keep this PWM fixed while calibrating; changing it invalidates both factors.
 TURN_SPEED = 0.5
-TURN_LEFT_SECONDS_PER_DEGREE = 0.0089
-TURN_RIGHT_SECONDS_PER_DEGREE = 0.0089
+TURN_LEFT_SECONDS_PER_DEGREE = 0.0075
+TURN_RIGHT_SECONDS_PER_DEGREE = 0.0075
 
 # Confirmed by the user's probe: BCM 18 lifts the arm; BCM 12 opens the claw.
 # These GPIO outputs are independent of the motor PCA9685 frequency.
