@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng GPIO BCM 18 (góc đích 0–90°), càng dùng GPIO BCM 12 (mở 100°, đóng 0°).
+Tay nâng/hạ dùng GPIO BCM 18, càng dùng GPIO BCM 12; cả hai nhận góc đích 0–90°.
 
 ## Cấu trúc
 
@@ -729,34 +729,40 @@ Giới hạn góc và chiều nâng/hạ vẫn cần xác nhận với cơ cấu
 ### Mở/khép càng qua GPIO BCM 12
 
 Servo càng 12G dùng **GPIO BCM 12**, đã được người dùng xác nhận bằng probe.
-Theo xác nhận mới nhất trên xe: **tăng góc từ 0° lên 100° thì mở càng**,
-giảm từ 100° về 0° thì khép càng.
+Thang điều khiển **0–90°**: 0° khép càng, 90° mở hết.
+Hai tên lệnh đều nhận góc đích tuyệt đối, không cộng/trừ góc hiện tại.
 
 ```text
-mo_cang 2
-dong_cang 2
+mo_cang 60
+dong_cang 20 3
+dong_cang 0
 chay
 ```
 
-Chỉ dùng `mo_cang [giây]` và `dong_cang [giây]`, không cần lệnh đặt mốc góc.
-Mở yêu cầu **100°**, đóng yêu cầu **0°**. Giới hạn riêng của càng là 0–100°.
-Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGLE`,
-`CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ dùng riêng 0–90°.
-Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
+Các lệnh là `mo_cang <góc> [giây]` và `dong_cang <góc> [giây]`.
+Tham số đầu tiên luôn là góc, nên `mo_cang 2` hiện có nghĩa tới **2°**.
+Phải ghi góc; lệnh không có tham số bị từ chối để tránh nhầm cú pháp cũ.
+Giới hạn nằm trong `CLAW_MIN_ANGLE`/`CLAW_MAX_ANGLE` ở `config.py`.
+Đây là góc quy ước của cơ cấu, chưa phải góc cơ khí được đo.
 
-**Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 0°**.
-`CLAW_START_ANGLE` là vị trí khởi đầu giả định;
+Mặc định **chuẩn bị càng khép ở vị trí 0° trước khi khởi động**.
+Nếu khởi động lại với càng đang ở mốc mở hết đã thử, chạy:
+
+```sh
+python main.py --claw-start-angle 90
+```
+
+`--claw-start-angle` nhận 0–90, mặc định `CLAW_START_ANGLE=0`, là vị trí giả định;
 chương trình không tự chạy càng về gốc, không đọc được góc và không phát PWM khi
 khởi tạo. Nếu càng không ở vị trí này, lần phát xung đầu vẫn có thể gây bật nhanh.
 
-`mo_cang 2` chia chuyển động yêu cầu **0° → 100° trong 2 giây**;
-`dong_cang 2` chuyển **100° → 0° trong 2 giây**. Bỏ số giây mặc định 2
+`mo_cang 60` chuyển từ góc yêu cầu trước đó tới **60° trong 2 giây**;
+`dong_cang 0 3` chuyển về **0° trong 3 giây**. Bỏ số giây mặc định 2
 (`CLAW_MOVE_SECONDS`). Mỗi khoảng tối đa 20 ms (`CLAW_UPDATE_INTERVAL_SECONDS`)
 cập nhật một góc; đường chuyển góc tăng tốc và giảm tốc nhẹ ở hai đầu.
-Thời gian phải hữu hạn và **ít nhất 2 giây** (`CLAW_MIN_MOVE_SECONDS`), không nhận
-thêm góc hoặc PWM. Có thể dùng `mo_cang 4`/`dong_cang 4` để chia bước chậm hơn.
-Sau góc cuối, chờ thêm `CLAW_SETTLE_SECONDS = 0.1` giây; khi mở thì giữ PWM,
-khi đóng thì mặc định ngắt PWM.
+Thời gian phải hữu hạn trong **0,2–60 giây** (`CLAW_MIN_MOVE_SECONDS` và
+`CLAW_MAX_MOVE_SECONDS`), giống file test độc lập.
+Sau góc cuối, chờ thêm `CLAW_SETTLE_SECONDS = 0.1` giây rồi nhả PWM.
 lệnh 2 giây mất ít nhất khoảng **2,1 giây** tổng cộng, có thể dài hơn do lịch chạy hệ điều hành.
 Thời gian này điều khiển lịch gửi góc yêu cầu; chưa xác nhận tốc độ cơ cấu thật.
 `probe_servo.py` vẫn gửi góc trực tiếp, không áp dụng cách chuyển từng bước này.
@@ -766,14 +772,12 @@ kernel** qua `rpi-hardware-pwm`, PWM0 trên BCM 12. Xung được tạo bởi b�
 Python chỉ thay đổi độ rộng xung khi chuyển góc. Không tắt/bật PWM hoặc đổi tần số
 ở mỗi bước. Đây là xử lý một nguồn có thể gây giật trong lúc di chuyển; chưa
 xác nhận nguyên nhân trên xe là xung, nguồn điện hay tải cơ khí.
-Các bước góc vẫn được giữ; góc trùng cùng độ rộng xung nguyên µs không gửi lại.
-Góc quy ước của càng tách khỏi góc điện của servo: **khép 0° → 1611 µs**,
-**mở 100° → 500 µs**. `CLAW_CLOSE_PULSE_US` và `CLAW_OPEN_PULSE_US` giữ hai
-mốc điện của bản PWM từng chạy ổn, không phải số đo mới trên cơ cấu. Vì vậy
-đổi tên mốc góc không làm lần phát xung đầu nhảy từ mốc khép sang mốc mở.
-Phần mềm nội suy giữa hai xung này trong thời gian yêu cầu; nếu càng vẫn tới
-đích sớm, cần xác định lại hai mốc điện theo hành trình thật. Chỉ tăng thời gian
-hoặc đổi đường nội suy không xác nhận cơ cấu sẽ chuyển động đúng số giây đó.
+Đầu ra dùng `adafruit_motor.servo.Servo` và bộ chuyển duty 16 bit, cùng cách
+với `tests/test_claw_angle.py`; duty trùng được bỏ qua.
+Góc quy ước tách khỏi góc điện servo: **khép 0° → 3450 µs**,
+**mở 90° → 1000 µs**, giữa hành trình **45° → 2225 µs** danh nghĩa.
+`CLAW_CLOSE_PULSE_US` và `CLAW_OPEN_PULSE_US` dùng hai mốc người dùng đã thử
+thành công trên cơ cấu này, không phải dải xung định mức của model servo.
 Nâng/hạ dùng riêng driver `pwm-gpio` trên BCM 18 như phần thiết lập ở trên.
 
 Thiết lập một lần theo [hướng dẫn Pi 4 / Trixie](docs/pi4-claw-pwm.md).
@@ -810,19 +814,14 @@ phần cứng hoặc truy cập sysfs. Phương án này không cần daemon pig
 pigpio có hạn chế trên các bản Debian mới.
 Không chạy `probe_servo.py` hay chương trình servo khác cùng lúc với `main.py`.
 
-Mặc định **`CLAW_HOLD_OPEN_POSITION = True`**: sau lệnh mở, tiếp tục phát PWM
-ở góc đích để duy trì vị trí mở. Người dùng đã xác nhận càng tự đóng sau dòng
-báo ngắt PWM cuối lượt. Giữ mở kết thúc khi chạy `dong_cang`, hoặc khi chương
-trình thoát/bị lỗi/ngắt; Ctrl+C vẫn tắt PWM nên cơ cấu có thể tự khép lúc đó.
-`CLAW_HOLD_POSITION = False` giữ hành vi nhả PWM sau lệnh đóng, không duy trì
-lực kẹp liên tục; vật đang kẹp có thể tuột. Nâng/hạ BCM 18 vẫn mặc định tắt PWM
-sau hành trình. Đặt `CLAW_HOLD_OPEN_POSITION=False` để nhả cả sau lệnh mở;
-`CLAW_HOLD_POSITION=True` sẽ giữ PWM ở cả hai mốc.
+Mặc định **`CLAW_HOLD_OPEN_POSITION=False`** và **`CLAW_HOLD_POSITION=False`**:
+nhả PWM sau mọi góc đích, giống file test; không cần tùy chọn `--hold`.
+Sau nhả PWM, cơ cấu không còn lực giữ chủ động. Nâng/hạ BCM 18 vẫn nhả PWM.
 
 Nếu góc yêu cầu cuối đã trùng đích (gồm lệnh đóng ngay sau khởi động), bỏ qua thao
 tác và không phát lại PWM. Sau khi nhả PWM, vị trí thật có thể thay đổi do ngoại lực;
 chương trình không đo được sự thay đổi đó. Khi đã dịch chuyển càng bằng cách khác,
-cần chuẩn bị lại trạng thái khép và khởi động lại. Lỗi/ngắt giữa chừng làm mất vị
+cần khởi động lại với `--claw-start-angle` khớp vị trí đã biết. Lỗi/ngắt giữa chừng làm mất vị
 trí tham chiếu và chặn lệnh càng tiếp theo tới khi khởi động lại.
 Các lệnh vẫn xếp hàng tới khi nhập `chay`, dừng bánh trước khi điều khiển càng,
 hủy phần còn lại khi lỗi/ngắt, và giải phóng riêng từng GPIO khi thoát.
@@ -862,9 +861,9 @@ Thêm `--dry-run` để chỉ in yêu cầu, không nhập thư viện GPIO và 
 ### Càng luôn mở hết dù đổi góc: xác định loại servo trước
 
 Nhãn "12G Digital Servo" chưa xác nhận servo định vị hay quay liên tục.
-Các lệnh càng dùng thang điện 180° với hai góc đích 0°/100° theo cấu hình;
-đó chưa phải dải cơ khí đã hiệu chỉnh của càng thực tế.
-Theo ánh xạ hiện tại, khép 0°/mở 100° tương ứng 1611/500 µs. Nếu servo quay
+Hiện tại dùng thang quy ước 0–90° và mốc khép/mở 3450/1000 µs do người dùng
+đã thử thành công. Bản trước dùng 1611/500 µs và đã gặp lỗi mở hết.
+Nếu gặp lại hiện tượng này, chưa thể kết luận loại servo từ nhãn. Nếu servo quay
 liên tục, dải này có thể chỉ yêu cầu quay cùng một chiều; nếu là servo định vị,
 cơ cấu cũng có thể chạm hết hành trình trong dải này. Chưa xác định nguyên nhân
 chỉ từ việc cả các góc đều làm càng mở hết. Ngắt PWM chỉ dừng yêu cầu giữ xung,

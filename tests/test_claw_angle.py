@@ -10,25 +10,22 @@ Inside vehicle_testing on the Pi, with its virtual environment:
 
 This single file can also be copied elsewhere; no project imports are needed.
 Commands execute immediately (no 'chay'). In hardware mode, run ONE movement,
-then release PWM and exit while the reported full-open fault is investigated:
+then release PWM and exit for independent testing:
     mo_cang 60       absolute target 60 degrees over the default 2 seconds
     dong_cang 20 3  absolute target 20 degrees over 3 seconds
     dong_cang 0     closed; release PWM after settling
     thoat          release PWM and exit; Ctrl+C does the same
 
 Both command names set an absolute target in [0, 90], not a relative amount.
-Proposed test profile: logical 0 = closed (2400 us), 90 = open (1000 us).
-These user-requested endpoints are UNCALIBRATED and not a verified MG90S spec.
-These labels are not measured physical angles; calibrate against the mechanism.
+User-tested profile: logical 0 = closed (3450 us), 90 = open (1000 us).
+The user reports these endpoints work on this mechanism; the servo model and
+rated pulse range remain unknown. These labels are not measured physical angles.
 Hardware mode REQUIRES --start-angle matching the claw's known position:
 0 when it is closed, 90 when it is at the tested fully-open position. After
 restarting with the claw open, use --start-angle 90 before dong_cang 0.
 The script does not measure that position. Startup emits no position request.
 
-PWM is always released after a movement. The reported full-open fault means
-Neither the previous 500/1611 us nor the new 1000/2400 us are measured endpoints;
-do not repeat hardware tests
-until servo type, starting pulse and physical endpoints have been checked.
+PWM is always released after a movement.
 After release, the real position is unknown. Do not reuse the requested angle
 as a measured starting position for another movement.
 
@@ -54,9 +51,9 @@ MAX_ANGLE = 90.0
 BCM_PIN = 12
 PWM_CHANNEL = 0
 FREQUENCY_HZ = 50
-# User-requested experimental profile; not measured on the attached mechanism.
-# The first pulse at the assumed startup position 0 is now 2400 us.
-CLOSE_PULSE_US = 2400
+# Endpoints reported working by the user on this mechanism, not a model rating.
+# Logical 0..90 is a control scale; the script does not measure physical angles.
+CLOSE_PULSE_US = 3450
 OPEN_PULSE_US = 1000
 UPDATE_SECONDS = 0.02
 SETTLE_SECONDS = 0.1
@@ -115,7 +112,7 @@ def inspect_claw(root=Path("/sys/class/pwm"),
     """Read metadata/state and pin mux only; never open or enable PWM."""
     print("CLAW_DIAG_V1 | CHI DOC - KHONG PHAT XUNG")
     print(f"File: {Path(__file__).resolve()}")
-    print(f"Anh xa THU NGHIEM, CHUA HIEU CHINH: khep 0 do = {CLOSE_PULSE_US:g} us, "
+    print(f"Anh xa DA DUOC NGUOI DUNG THU: khep 0 do = {CLOSE_PULSE_US:g} us, "
           f"mo 90 do = {OPEN_PULSE_US:g} us.")
     print("Sysfs la trang thai driver, KHONG phai phep do xung/goc that.")
     result = 0
@@ -300,7 +297,7 @@ class ClawExperiment:
             except Exception as error:
                 print(f"Khong tat duoc PWM sau loi: {error}", file=sys.stderr)
             raise
-        print("Da gui goc dich va nha PWM; KHONG xac nhan goc that hoac da sua loi mo het.")
+        print("Da gui goc dich va nha PWM; goc thuc te khong duoc do.")
 
     def release(self):
         if self._adapter is not None:
@@ -339,7 +336,7 @@ def main(argv=None):
     print(f"Goc ban dau gia dinh: {claw.angle:g} do. Chuan bi cang dung moc truoc lenh dau.")
     print("Nhap: mo_cang 60 | dong_cang 20 | dong_cang 0 3 | thoat. Lenh chay ngay.")
     if args.run:
-        print("DANG CHAN DOAN LOI MO HET: chi thu mot chuyen dong, nha PWM va thoat.")
+        print("TEST DOC LAP: chi thu mot chuyen dong, nha PWM va thoat.")
     result = 0
     try:
         while True:

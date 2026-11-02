@@ -63,33 +63,31 @@ SERVO_SETTLE_SECONDS = 0.1
 # Release the lift after a move so it does not resist manual repositioning.
 # PWM off removes active support; the arm may lower under load.
 SERVO_HOLD_POSITION = False
-# User-confirmed direction: increasing angle opens the gripper (0 -> 100).
+# User-tested direction: increasing logical angle opens the gripper (0 -> 90).
 CLAW_MIN_ANGLE = 0.0
-CLAW_MAX_ANGLE = 100.0
-CLAW_OPEN_ANGLE = 100.0
+CLAW_MAX_ANGLE = 90.0
+CLAW_OPEN_ANGLE = 90.0
 CLAW_CLOSE_ANGLE = 0.0
 # User will prepare the claw closed at 0 degrees before starting the program.
 CLAW_START_ANGLE = CLAW_CLOSE_ANGLE
 # Logical claw angles are separate from the servo's electrical pulse scale.
-# Retain the pulse endpoints from the previously working hardware-PWM path:
-# its closed servo request was 100 degrees (~1611 us), open was 0 (500 us).
-# These are existing endpoints, not new measurements of the mechanism.
-CLAW_CLOSE_PULSE_US = 1611.0
-CLAW_OPEN_PULSE_US = 500.0
+# Endpoints reported working in tests/test_claw_angle.py on this mechanism.
+# These are not the servo model's rated pulse range or measured physical angles.
+CLAW_CLOSE_PULSE_US = 3450.0
+CLAW_OPEN_PULSE_US = 1000.0
 # Pi check with both overlays: pwmchip0 = GPIO 18; pwmchip1 = BCM hardware PWM.
 # BCM 12 still uses channel 0. Recheck with check_lift_pwm.py if numbering changes.
 CLAW_PWM_CHIP = 1
 CLAW_PWM_CHANNEL = 0
 # Nominal time to interpolate the requested angle between endpoints.
 CLAW_MOVE_SECONDS = 2.0
-# Reject shorter requests, which would increase the commanded travel speed.
-CLAW_MIN_MOVE_SECONDS = 2.0
+CLAW_MIN_MOVE_SECONDS = 0.2
+CLAW_MAX_MOVE_SECONDS = 60.0
 CLAW_UPDATE_INTERVAL_SECONDS = 0.02
 # Allow the final request to be emitted for several PWM frames before release.
 CLAW_SETTLE_SECONDS = 0.1
-# Keep the open position: user observed the claw closing as soon as PWM stops.
-# This applies only to a completed open; shutdown/errors still stop PWM.
-CLAW_HOLD_OPEN_POSITION = True
+# Match the standalone test: release PWM after opening and closing.
+CLAW_HOLD_OPEN_POSITION = False
 # False releases PWM after closing, so active gripping force is not maintained.
 # True would hold both positions, regardless of CLAW_HOLD_OPEN_POSITION.
 CLAW_HOLD_POSITION = False

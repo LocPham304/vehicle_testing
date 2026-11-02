@@ -19,7 +19,7 @@ from vehicle_testing.config import (
     SERVO_UPDATE_INTERVAL_SECONDS, SERVO_SETTLE_SECONDS, SERVO_HOLD_POSITION,
     CLAW_BCM_PIN, CLAW_MIN_ANGLE, CLAW_MAX_ANGLE, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
     CLAW_HOLD_POSITION, CLAW_HOLD_OPEN_POSITION, CLAW_MOVE_SECONDS,
-    CLAW_START_ANGLE, CLAW_MIN_MOVE_SECONDS, CLAW_UPDATE_INTERVAL_SECONDS,
+    CLAW_START_ANGLE, CLAW_MIN_MOVE_SECONDS, CLAW_MAX_MOVE_SECONDS, CLAW_UPDATE_INTERVAL_SECONDS,
     CLAW_SETTLE_SECONDS,
     CLAW_PWM_CHIP, CLAW_PWM_CHANNEL,
     CLAW_CLOSE_PULSE_US, CLAW_OPEN_PULSE_US,
@@ -59,8 +59,8 @@ def hand_angle_to_pulse_us(angle: float) -> float:
 
 
 def validate_claw_seconds(seconds: float) -> None:
-    if not math.isfinite(seconds) or seconds < CLAW_MIN_MOVE_SECONDS:
-        raise ValueError(f"Thoi gian chuyen cang phai huu han va it nhat {CLAW_MIN_MOVE_SECONDS:g} giay.")
+    if not math.isfinite(seconds) or not CLAW_MIN_MOVE_SECONDS <= seconds <= CLAW_MAX_MOVE_SECONDS:
+        raise ValueError(f"Thoi gian chuyen cang phai huu han trong [{CLAW_MIN_MOVE_SECONDS:g}, {CLAW_MAX_MOVE_SECONDS:g}] giay.")
 
 
 def validate_claw_angle(angle: float) -> None:
@@ -74,8 +74,8 @@ def validate_claw_calibration() -> None:
         validate_claw_angle(angle)
     pulses = (CLAW_CLOSE_PULSE_US, CLAW_OPEN_PULSE_US)
     if any(not isinstance(pulse, (int, float)) or not math.isfinite(pulse)
-           or not 500 <= pulse <= 2500 for pulse in pulses):
-        raise ValueError("Hai moc xung cang phai huu han trong [500, 2500] us o config.py.")
+           or not 500 <= pulse <= 3450 for pulse in pulses):
+        raise ValueError("Hai moc xung cang phai huu han trong [500, 3450] us o config.py (3450 us la moc rieng da thu tren co cau nay).")
     if CLAW_CLOSE_ANGLE == CLAW_OPEN_ANGLE or CLAW_CLOSE_PULSE_US == CLAW_OPEN_PULSE_US:
         raise ValueError("Hai moc dong/mo cang phai khac nhau ca goc va xung.")
 
@@ -274,16 +274,22 @@ class HardwarePWMClawOutput:
         validate_claw_pwm_chip(CLAW_PWM_CHIP)
         try:
             hardware = importlib.import_module("rpi_hardware_pwm")
+            servo_module = importlib.import_module("adafruit_motor.servo")
         except ImportError as error:
-            raise RuntimeError("Thieu rpi-hardware-pwm: cai requirements.txt tren Raspberry Pi.") from error
+            raise RuntimeError("Can rpi-hardware-pwm va adafruit-circuitpython-motor: cai requirements.txt tren Raspberry Pi.") from error
         self._pwm = None
+        self._adapter = None
+        self._servo = None
         self._closed = False
-        self._running = False
-        self._pulse_us: int | None = None
         try:
             self._pwm = hardware.HardwarePWM(pwm_channel=CLAW_PWM_CHANNEL,
                                              hz=SERVO_PWM_FREQUENCY_HZ, chip=CLAW_PWM_CHIP)
+            self._adapter = KernelPWMAdapter(self._pwm)
             self.release()
+            self._servo = servo_module.Servo(
+                self._adapter, actuation_range=CLAW_OPEN_ANGLE - CLAW_CLOSE_ANGLE,
+                min_pulse=CLAW_OPEN_PULSE_US, max_pulse=CLAW_CLOSE_PULSE_US,
+            )
         except (Exception, KeyboardInterrupt) as error:
             try:
                 self.close()
@@ -297,28 +303,23 @@ class HardwarePWMClawOutput:
             raise
 
     def set_angle(self, angle: float) -> None:
-        pulse_us = round(claw_angle_to_pulse_us(angle))
+        pulse_us = claw_angle_to_pulse_us(angle)
         if self._closed:
             raise RuntimeError("Dau ra cang da dong.")
-        if pulse_us != self._pulse_us:
-            duty = pulse_us / (1_000_000 / SERVO_PWM_FREQUENCY_HZ) * 100
-            if self._running:
-                self._pwm.change_duty_cycle(duty)
-            else:
-                self._pwm.start(duty)
-                self._running = True
-            self._pulse_us = pulse_us
-            logger.debug(
-                "Yeu cau PWM cang BCM %d: goc %.3f do, xung %d us, duty %.3f%% (khong do tin hieu).",
-                CLAW_BCM_PIN, angle, pulse_us, duty,
-            )
+        # Same reversed Adafruit mapping as the user-tested standalone file.
+        self._servo.angle = CLAW_OPEN_ANGLE - angle
+        logger.debug(
+            "Yeu cau PWM cang BCM %d: goc %.3f do, xung danh nghia %.3f us (khong do tin hieu).",
+            CLAW_BCM_PIN, angle, pulse_us,
+        )
 
     def release(self) -> None:
         if not self._closed and self._pwm is not None:
-            logger.debug("Cang: gui yeu cau tat PWM; xung yeu cau cuoi %s us.", self._pulse_us)
-            self._pwm.stop()
-            self._running = False
-            self._pulse_us = None
+            logger.debug("Cang: gui yeu cau tat PWM.")
+            if self._adapter is not None:
+                self._adapter.release()
+            else:
+                self._pwm.stop()
             logger.debug("Cang: thu vien da tra ve sau yeu cau tat PWM.")
 
     def close(self) -> None:
@@ -410,11 +411,12 @@ class HandController:
 
 
 class ClawController:
-    """Interpolate from the assumed closed startup position; no physical feedback."""
+    """Absolute targets from an assumed startup position; no physical feedback."""
 
     def __init__(self, output_factory: Callable[[], ServoOutput],
-                 sleeper: Callable[[float], None] = time.sleep) -> None:
-        validate_claw_angle(CLAW_START_ANGLE)
+                 sleeper: Callable[[float], None] = time.sleep, *,
+                 start_angle: float = CLAW_START_ANGLE) -> None:
+        validate_claw_angle(start_angle)
         validate_claw_seconds(CLAW_MOVE_SECONDS)
         if (not math.isfinite(CLAW_MIN_MOVE_SECONDS) or CLAW_MIN_MOVE_SECONDS <= 0
                 or not math.isfinite(CLAW_UPDATE_INTERVAL_SECONDS) or CLAW_UPDATE_INTERVAL_SECONDS <= 0
@@ -426,9 +428,9 @@ class ClawController:
         self._hold_position = CLAW_HOLD_POSITION
         self._hold_open_position = CLAW_HOLD_OPEN_POSITION
         self._closed = False
-        self._angle: float | None = CLAW_START_ANGLE
-        logger.info("Can de cang khep %g do truoc khi khoi dong; day la vi tri gia dinh, khong do duoc.",
-                    CLAW_START_ANGLE)
+        self._angle: float | None = start_angle
+        logger.info("Vi tri cang ban dau gia dinh: %g do; can khop vi tri that, khong do duoc. "
+                    "Dung --claw-start-angle khi khoi dong voi cang dang mo.", start_angle)
 
     def _move(self, angle: float, seconds: float, label: str) -> None:
         validate_claw_seconds(seconds)
@@ -477,12 +479,13 @@ class ClawController:
                     logger.exception("Khong tat duoc PWM cang sau loi")
             raise
         self._angle = angle
+        logger.info("Cang: luu goc yeu cau %g do cho lenh tiep theo; khong phai vi tri do duoc.", angle)
 
-    def open(self, seconds: float = CLAW_MOVE_SECONDS) -> None:
-        self._move(CLAW_OPEN_ANGLE, seconds, "MO CANG")
+    def open(self, seconds: float = CLAW_MOVE_SECONDS, *, angle: float = CLAW_OPEN_ANGLE) -> None:
+        self._move(angle, seconds, "MO CANG")
 
-    def grip(self, seconds: float = CLAW_MOVE_SECONDS) -> None:
-        self._move(CLAW_CLOSE_ANGLE, seconds, "DONG CANG")
+    def grip(self, seconds: float = CLAW_MOVE_SECONDS, *, angle: float = CLAW_CLOSE_ANGLE) -> None:
+        self._move(angle, seconds, "DONG CANG")
 
     def close(self) -> None:
         if self._closed:

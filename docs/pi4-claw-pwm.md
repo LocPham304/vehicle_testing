@@ -4,17 +4,16 @@ Phần điều khiển servo hiện nằm trong `hardware/servos.py`, nhận di�
 trong `hardware/pwm.py`. `config.py`, `main.py` và `check_lift_pwm.py` vẫn dùng
 tại thư mục gốc như các lệnh dưới đây.
 
-Mở yêu cầu 100° (0° → 100°), đóng yêu cầu 0° (100° → 0°). Trước khi khởi động
-chương trình, chuẩn bị càng khép ở mốc 0°. Chương trình không đo góc
-thật hoặc tự đưa về gốc. Bản sửa phát PWM bằng bộ PWM của kernel, giữ các bước
-chuyển góc nhẹ ở hai đầu; cần thử trên xe để xác nhận rung đã giảm.
+Lệnh `mo_cang <góc> [giây]` và `dong_cang <góc> [giây]` nhận góc đích tuyệt đối
+0–90°. 0° khép, 90° mở hết, thời gian mặc định 2 giây, cho phép 0,2–60 giây.
+Trước khi khởi động, chuẩn bị càng khép ở mốc 0°; nếu đang ở mốc mở hết đã thử,
+dùng `python main.py --claw-start-angle 90`. Chương trình không đo góc hoặc tự
+đưa về gốc. Mỗi chuyển động nhả PWM sau khi chờ 0,1 giây ở đích.
 
-Góc 0°/100° ở đây là hai mốc quy ước của càng. Độ rộng xung servo được cấu hình
-riêng: `CLAW_CLOSE_PULSE_US=1611.0`, `CLAW_OPEN_PULSE_US=500.0`. Hai giá trị giữ
-đầu ra của bản PWM từng chạy ổn: lệnh mở bắt đầu ở xung khép 1611 µs rồi giảm
-dần tới 500 µs, trong khi log góc vẫn là 0° → 100°. Đây chưa phải hai mốc điện
-được đo lại trên cơ cấu. Nếu càng vẫn mở hết sớm hơn thời gian yêu cầu, phải
-xác định dải xung thực tế; không suy ra tốc độ thật chỉ từ thời gian gửi góc.
+`CLAW_CLOSE_PULSE_US=3450.0`, `CLAW_OPEN_PULSE_US=1000.0` là hai mốc người dùng
+đã thử thành công trong `tests/test_claw_angle.py`, không phải dải định mức của
+model servo. Đầu ra chính dùng cùng ánh xạ Adafruit Servo qua duty 16 bit trên
+PWM phần cứng kernel 50 Hz. Góc quy ước chưa phải góc vật lý đo được.
 
 ## Cấu hình Pi một lần
 
@@ -107,24 +106,25 @@ Không chọn chip khác chỉ để bỏ qua thông báo lỗi. Phần mềm kh
 Với càng đang khép ở vị trí ban đầu 0°, nhập:
 
 ```text
-mo_cang 4
+mo_cang 90 4
 chay
 ```
 
 Quan sát xong mới thử đóng riêng:
 
 ```text
-dong_cang 4
+dong_cang 0 4
 chay
 ```
 
-Các lệnh gửi dần góc yêu cầu trong 4 giây, chờ thêm 0,1 giây ở góc cuối. Mặc định
-`CLAW_HOLD_OPEN_POSITION=True` giữ PWM sau mở để càng không tự khép khi mất xung;
-`CLAW_HOLD_POSITION=False` vẫn nhả PWM sau đóng. Thoát/Ctrl+C hoặc lỗi vẫn ngắt
-PWM và cơ cấu có thể tự khép lúc đó. Không chạy probe hoặc chương trình GPIO
+Các lệnh gửi dần góc yêu cầu trong 4 giây, chờ thêm 0,1 giây rồi nhả PWM.
+Mặc định `CLAW_HOLD_OPEN_POSITION=False`, `CLAW_HOLD_POSITION=False`.
+Sau nhả PWM, vị trí tiếp theo dựa trên góc đã yêu cầu gần nhất, không phải phép
+đo; nếu cơ cấu đã dịch chuyển bởi ngoại lực, khởi động lại với mốc đầu đã biết.
+Thoát/Ctrl+C hoặc lỗi vẫn ngắt PWM. Không chạy probe hoặc chương trình GPIO
 khác đồng thời. Nếu càng chạm cứng,
 giật mạnh hoặc không đi theo các góc trung gian, dừng thử: giới hạn cơ khí, nguồn
-và phản ứng servo vẫn cần kiểm tra. Mốc 100° là góc yêu cầu theo quan sát người dùng,
+và phản ứng servo vẫn cần kiểm tra. Mốc 90° là góc quy ước theo quan sát người dùng,
 chưa phải góc đo hoặc bảo đảm an toàn cơ khí.
 
 ## Log chẩn đoán càng tự đóng hoặc giật

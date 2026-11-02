@@ -70,10 +70,10 @@ class LiftCalibrationTests(unittest.TestCase):
         with patch.multiple(self.module, SERVO_CALIBRATED=False, SERVO_DOWN_PULSE_US=None,
                             SERVO_UP_PULSE_US=None):
             hand = self.module.HandController(factory, sleeper=lambda _: None)
-            with patch("builtins.input", side_effect=["mo_cang 4", "chay", "thoat"]), \
+            with patch("builtins.input", side_effect=["mo_cang 90 4", "chay", "thoat"]), \
                     redirect_stdout(io.StringIO()):
                 run_session(MotorController(Mock(), sleeper=lambda _: None), hand, claw)
-        claw.open.assert_called_once_with(seconds=4)
+        claw.open.assert_called_once_with(angle=90, seconds=4)
         factory.assert_not_called()
 
     def test_mapping_does_not_extrapolate_past_calibrated_angle_endpoints(self):

@@ -14,7 +14,7 @@ from vehicle_testing.config import (
 )
 from vehicle_testing.hardware.servos import (
     DryRunServoOutput, KernelPWMLiftOutput, HardwarePWMClawOutput, HandController, ClawController,
-    validate_hand_angle, validate_hand_seconds, validate_claw_seconds,
+    validate_hand_angle, validate_hand_seconds, validate_claw_seconds, validate_claw_angle,
 )
 from vehicle_testing.hardware.motors import (
     DryRunOutput,
@@ -54,8 +54,8 @@ HELP = f"""Lenh:
   phai <do>           Quay tai cho sang phai, vi du: phai 90
   nang <goc> [giay]  Den goc tuyet doi 0..90 do, vi du: nang 60
   ha <goc> [giay]    Den goc tuyet doi 0..90 do, vi du: ha 20 3
-  mo_cang [giay]     Mo cang toi {CLAW_OPEN_ANGLE:g} do, vi du: mo_cang 2
-  dong_cang [giay]   Dong cang toi {CLAW_CLOSE_ANGLE:g} do, vi du: dong_cang 2
+  mo_cang <goc> [giay]    Den goc tuyet doi 0..90 do, vi du: mo_cang 60
+  dong_cang <goc> [giay]  Den goc tuyet doi 0..90 do, vi du: dong_cang 0 3
   ngung <giay>       Them khoang nghi, vi du: ngung 0.5
   chay               Thuc hien kich ban da nhap
   dung               Gui lenh dung va huy kich ban dang soan
@@ -64,18 +64,20 @@ HELP = f"""Lenh:
 
 
 def parse_command(line: str) -> tuple[str, float, float]:
-    """Return (action, value, option): lift angle/duration, otherwise value/PWM."""
+    """Return (action, value, option): servo angle/duration, otherwise value/PWM."""
     parts = line.lower().split()
     controls = {"chay": "run", "dung": "stop", "thoat": "exit"}
     if len(parts) == 1 and parts[0] in controls:
         return controls[parts[0]], 0.0, 0.0
-    if len(parts) in (1, 2) and parts[0] in CLAW_COMMANDS:
+    if len(parts) in (2, 3) and parts[0] in CLAW_COMMANDS:
         try:
-            seconds = float(parts[1]) if len(parts) == 2 else CLAW_MOVE_SECONDS
+            angle = float(parts[1])
+            seconds = float(parts[2]) if len(parts) == 3 else CLAW_MOVE_SECONDS
         except ValueError as error:
-            raise ValueError("Thoi gian cang phai la so, vi du: mo_cang 2.") from error
+            raise ValueError("Goc va thoi gian cang phai la so, vi du: mo_cang 60 2.") from error
+        validate_claw_angle(angle)
         validate_claw_seconds(seconds)
-        return CLAW_COMMANDS[parts[0]], seconds, 0.0
+        return CLAW_COMMANDS[parts[0]], angle, seconds
     if len(parts) in (2, 3) and parts[0] in HAND_COMMANDS:
         try:
             angle = float(parts[1])
@@ -101,7 +103,7 @@ def parse_command(line: str) -> tuple[str, float, float]:
         validate_turn(direction, angle)
         return direction, angle, TURN_SPEED
     if len(parts) not in (2, 3) or parts[0] not in TIMED_COMMANDS:
-        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha <goc> [giay], mo_cang/dong_cang [giay], ngung <giay>, chay, dung, hoac thoat.")
+        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha <goc> [giay], mo_cang/dong_cang <goc> [giay], ngung <giay>, chay, dung, hoac thoat.")
     try:
         seconds = float(parts[1])
         speed = float(parts[2]) if len(parts) == 3 else DEFAULT_SPEED
@@ -154,9 +156,9 @@ def run_session(controller: MotorController, hand: HandController | None = None,
                     if claw is None:
                         raise RuntimeError("Chua cau hinh bo dieu khien cang.")
                     if step == "claw_open":
-                        claw.open(seconds=amount)
+                        claw.open(angle=amount, seconds=pwm)
                     else:
-                        claw.grip(seconds=amount)
+                        claw.grip(angle=amount, seconds=pwm)
                 elif step in HAND_LABELS:
                     controller.stop()
                     if hand is None:
@@ -187,8 +189,8 @@ def run_session(controller: MotorController, hand: HandController | None = None,
         else:
             pending.append((action, value, speed))
             if action in ("claw_open", "claw_grip"):
-                logger.info("Da luu lenh #%d: %s %g giay. Go chay de bat dau.",
-                            len(pending), CLAW_LABELS[action], value)
+                logger.info("Da luu lenh #%d: %s toi %g do trong %g giay. Go chay de bat dau.",
+                            len(pending), CLAW_LABELS[action], value, speed)
             elif action in HAND_LABELS:
                 logger.info("Da luu lenh #%d: %s toi %g do trong %g giay. Go chay de bat dau.",
                             len(pending), HAND_LABELS[action], value, speed)
@@ -212,7 +214,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Mo phong, khong ket noi phan cung")
     parser.add_argument("--verbose", action="store_true", help="Hien chi tiet tung kenh dieu khien")
+    parser.add_argument("--claw-start-angle", type=float, default=CLAW_START_ANGLE,
+                        help="Goc cang ban dau gia dinh 0..90, mac dinh khep 0; dang mo het thi 90")
     args = parser.parse_args(argv)
+    try:
+        validate_claw_angle(args.claw_start_angle)
+    except ValueError as error:
+        parser.error(str(error))
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s: %(message)s", stream=sys.stdout,
@@ -230,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
         hand = HandController(DryRunServoOutput if args.dry_run else KernelPWMLiftOutput,
                               calibration_required=not args.dry_run)
         claw_output = DryRunServoOutput if args.dry_run else HardwarePWMClawOutput
-        claw = ClawController(lambda: claw_output(pin=CLAW_BCM_PIN))
+        claw = ClawController(lambda: claw_output(pin=CLAW_BCM_PIN), start_angle=args.claw_start_angle)
         controller.stop()
         run_session(controller, hand, claw)
     except KeyboardInterrupt:
