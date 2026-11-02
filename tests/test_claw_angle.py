@@ -7,7 +7,8 @@ Inside vehicle_testing on the Pi, with its virtual environment:
     .venv/bin/python tests/test_claw_angle.py --run
 
 This single file can also be copied elsewhere; no project imports are needed.
-Commands execute immediately (no 'chay'):
+Commands execute immediately (no 'chay'). In hardware mode, run ONE movement,
+then release PWM and exit while the reported full-open fault is investigated:
     mo_cang 60       absolute target 60 degrees over the default 2 seconds
     dong_cang 20 3  absolute target 20 degrees over 3 seconds
     dong_cang 0     closed; release PWM after settling
@@ -19,10 +20,11 @@ These labels are not measured physical angles; calibrate against the mechanism.
 Prepare the claw closed at logical 0 before starting; otherwise provide its
 KNOWN logical position using --start-angle. Startup emits no position request.
 
-By default, keep PWM for ALL nonzero targets so the claw stays at that angle;
-release at 0. Use --release-after-move to test releasing at every target.
-After releasing or manual movement, the saved position may differ from reality.
-Restart with the correct starting position before further movement in that case.
+PWM is always released after a movement. The reported full-open fault means
+500/1611 us are NOT confirmed position endpoints; do not repeat hardware tests
+until servo type, starting pulse and physical endpoints have been checked.
+After release, the real position is unknown. Do not reuse the requested angle
+as a measured starting position for another movement.
 
 Stop main.py and any other servo program before testing. Keep the current
 dtoverlay=pwm,pin=12,func=4 and audio configuration; no boot changes are made.
@@ -134,10 +136,9 @@ class KernelPWMAdapter:
 
 
 class ClawExperiment:
-    def __init__(self, start_angle=0, dry_run=True, release_after_move=False):
+    def __init__(self, start_angle=0, dry_run=True):
         self.angle = number_in_range(start_angle, MIN_ANGLE, MAX_ANGLE, "Goc ban dau")
         self.dry_run = dry_run
-        self.release_after_move = release_after_move
         self._adapter = None
         self._servo = None
 
@@ -170,14 +171,15 @@ class ClawExperiment:
         angle = number_in_range(angle, MIN_ANGLE, MAX_ANGLE, "Goc (do)")
         seconds = number_in_range(seconds, 0.2, 60, "Thoi gian (giay)")
         if self.angle is None:
-            raise RuntimeError("Mat moc vi tri sau loi/ngat; dat lai cang va khoi dong lai.")
+            raise RuntimeError("Khong biet goc that sau nha PWM/loi/ngat; dung thu va kiem tra lai moc vi tri.")
         start = self.angle
         steps = math.ceil(seconds / UPDATE_SECONDS)
-        keep_pwm = not self.release_after_move and angle > MIN_ANGLE
         print(f"Yeu cau {start:g} -> {angle:g} do / {seconds:g}s, "
               f"{steps} buoc; xung dich danh nghia {angle_to_pulse_us(angle):.1f} us.")
         try:
             self._open()
+            print(f"Moc dau GIA DINH: {start:g} do -> {angle_to_pulse_us(start):.1f} us; "
+                  "khong phai vi tri do duoc.")
             self._set_angle(start)
             for step in range(1, steps + 1):
                 if not self.dry_run:
@@ -188,9 +190,8 @@ class ClawExperiment:
                 self._set_angle(position)
             if not self.dry_run:
                 time.sleep(SETTLE_SECONDS)
-            if not keep_pwm:
-                self.release()
-            self.angle = angle
+            self.release()
+            self.angle = angle if self.dry_run else None
         except (Exception, KeyboardInterrupt):
             self.angle = None
             try:
@@ -198,8 +199,7 @@ class ClawExperiment:
             except Exception as error:
                 print(f"Khong tat duoc PWM sau loi: {error}", file=sys.stderr)
             raise
-        print("Da gui goc dich (khong do goc that). " +
-              ("Giu PWM tai goc nay." if keep_pwm else "Nha PWM; vi tri tiep theo la gia dinh."))
+        print("Da gui goc dich va nha PWM; KHONG xac nhan goc that hoac da sua loi mo het.")
 
     def release(self):
         if self._adapter is not None:
@@ -214,12 +214,12 @@ def main(argv=None):
     mode.add_argument("--dry-run", action="store_true", help="Mo phong (mac dinh)")
     parser.add_argument("--start-angle", default=0, type=float, help="Goc hien tai gia dinh, 0..90")
     parser.add_argument("--seconds", default=2, type=float, help="Thoi gian moi lenh, 0.2..60")
-    parser.add_argument("--release-after-move", action="store_true", help="Nha PWM sau moi lenh")
+    parser.add_argument("--release-after-move", action="store_true",
+                        help="Tuong thich lenh cu; hien luon nha PWM sau moi lenh")
     args = parser.parse_args(argv)
     try:
         number_in_range(args.seconds, 0.2, 60, "Thoi gian")
-        claw = ClawExperiment(args.start_angle, dry_run=not args.run,
-                              release_after_move=args.release_after_move)
+        claw = ClawExperiment(args.start_angle, dry_run=not args.run)
     except ValueError as error:
         parser.error(str(error))
     if args.run and not sys.stdin.isatty():
@@ -227,6 +227,8 @@ def main(argv=None):
     print("TEST CANG BCM 12 | " + ("PWM THAT" if args.run else "MO PHONG - khong mo GPIO"))
     print(f"Goc ban dau gia dinh: {claw.angle:g} do. Chuan bi cang dung moc truoc lenh dau.")
     print("Nhap: mo_cang 60 | dong_cang 20 | dong_cang 0 3 | thoat. Lenh chay ngay.")
+    if args.run:
+        print("DANG CHAN DOAN LOI MO HET: chi thu mot chuyen dong, nha PWM va thoat.")
     result = 0
     try:
         while True:
@@ -241,6 +243,8 @@ def main(argv=None):
                 print(f"Lenh khong hop le: {error}")
                 continue
             claw.move(angle, seconds)
+            if args.run:
+                break
     except EOFError:
         pass
     except KeyboardInterrupt:
