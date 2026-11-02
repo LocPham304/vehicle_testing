@@ -5,7 +5,8 @@ Inside vehicle_testing on the Pi, with its virtual environment:
     .venv/bin/python -m pip install adafruit-circuitpython-motor rpi-hardware-pwm
     .venv/bin/python tests/test_claw_angle.py --dry-run
     .venv/bin/python tests/test_claw_angle.py --inspect
-    .venv/bin/python tests/test_claw_angle.py --run
+    .venv/bin/python tests/test_claw_angle.py --run --start-angle 0
+    .venv/bin/python tests/test_claw_angle.py --run --start-angle 90
 
 This single file can also be copied elsewhere; no project imports are needed.
 Commands execute immediately (no 'chay'). In hardware mode, run ONE movement,
@@ -19,8 +20,10 @@ Both command names set an absolute target in [0, 90], not a relative amount.
 Proposed test profile: logical 0 = closed (2400 us), 90 = open (1000 us).
 These user-requested endpoints are UNCALIBRATED and not a verified MG90S spec.
 These labels are not measured physical angles; calibrate against the mechanism.
-Prepare the claw closed at logical 0 before starting; otherwise provide its
-KNOWN logical position using --start-angle. Startup emits no position request.
+Hardware mode REQUIRES --start-angle matching the claw's known position:
+0 when it is closed, 90 when it is at the tested fully-open position. After
+restarting with the claw open, use --start-angle 90 before dong_cang 0.
+The script does not measure that position. Startup emits no position request.
 
 PWM is always released after a movement. The reported full-open fault means
 Neither the previous 500/1611 us nor the new 1000/2400 us are measured endpoints;
@@ -178,6 +181,7 @@ class KernelPWMAdapter:
 
     def __init__(self, hardware_pwm, chip):
         self._pwm = hardware_pwm(pwm_channel=PWM_CHANNEL, hz=self.frequency, chip=chip)
+        self._channel_path = Path("/sys/class/pwm") / f"pwmchip{chip}" / f"pwm{PWM_CHANNEL}"
         self._duty = 0
         self._running = False
 
@@ -199,6 +203,29 @@ class KernelPWMAdapter:
                 self._pwm.start(duty)
                 self._running = True
             self._duty = value
+
+    def report_driver_state(self):
+        """Read sysfs while enabled; this is NOT a waveform measurement."""
+        encoded_us = self._duty / 0xFFFF * 1_000_000 / self.frequency
+        print(f"PWM_REQUEST: duty16={self._duty}; ma hoa={encoded_us:.3f} us; "
+              f"tan so yeu cau={self.frequency:g} Hz.")
+        try:
+            state = {
+                name: int((self._channel_path / name).read_text(encoding="ascii").strip())
+                for name in ("enable", "period", "duty_cycle")
+            }
+            print(f"PWM_DRIVER: {self._channel_path}; enable={state['enable']}; "
+                  f"period={state['period']} ns; duty_cycle={state['duty_cycle']} ns.")
+            if state["period"] <= 0:
+                print("PWM_DRIVER: period khong hop le; chua xac nhan cau hinh.")
+            else:
+                print(f"PWM_DRIVER: {1_000_000_000 / state['period']:.3f} Hz; "
+                      f"{state['duty_cycle'] / 1000:.3f} us. "
+                      "Trang thai driver, KHONG phai phep do xung tren GPIO.")
+                if state["enable"] != 1 or abs(state["duty_cycle"] / 1000 - encoded_us) > 1:
+                    print("PWM_DRIVER: CAN KIEM TRA - trang thai khac yeu cau phat hien tai.")
+        except (OSError, ValueError) as error:
+            print(f"PWM_DRIVER: khong doc duoc trang thai: {error}. Van nha PWM.")
 
     def release(self):
         self._pwm.stop()
@@ -259,8 +286,11 @@ class ClawExperiment:
                 eased = progress ** 3 * (10 - 15 * progress + 6 * progress ** 2)
                 position = angle if step == steps else start + (angle - start) * eased
                 self._set_angle(position)
+            print(f"DA GUI GOC DICH: {angle:g} do, danh nghia {angle_to_pulse_us(angle):.1f} us.")
             if not self.dry_run:
                 time.sleep(SETTLE_SECONDS)
+                self._adapter.report_driver_state()
+            print("BAT DAU NHA PWM.")
             self.release()
             self.angle = angle if self.dry_run else None
         except (Exception, KeyboardInterrupt):
@@ -285,16 +315,22 @@ def main(argv=None):
     mode.add_argument("--dry-run", action="store_true", help="Mo phong (mac dinh)")
     mode.add_argument("--inspect", action="store_true",
                       help="Chi doc driver, trang thai PWM, pin mux; khong phat xung")
-    parser.add_argument("--start-angle", default=0, type=float, help="Goc hien tai gia dinh, 0..90")
+    parser.add_argument("--start-angle", default=None, type=float,
+                        help="Goc hien tai gia dinh, 0..90; bat buoc voi --run")
     parser.add_argument("--seconds", default=2, type=float, help="Thoi gian moi lenh, 0.2..60")
     parser.add_argument("--release-after-move", action="store_true",
                         help="Tuong thich lenh cu; hien luon nha PWM sau moi lenh")
     args = parser.parse_args(argv)
     if args.inspect:
         return inspect_claw()
+    if args.run and args.start_angle is None:
+        parser.error("Can khai bao --start-angle theo vi tri hien tai: "
+                     "dang khep dung moc thi 0; dang mo het dung moc da thu thi 90. "
+                     "Khong tu dong gia dinh cang da khep sau khi khoi dong lai.")
     try:
         number_in_range(args.seconds, 0.2, 60, "Thoi gian")
-        claw = ClawExperiment(args.start_angle, dry_run=not args.run)
+        start_angle = 0 if args.start_angle is None else args.start_angle
+        claw = ClawExperiment(start_angle, dry_run=not args.run)
     except ValueError as error:
         parser.error(str(error))
     if args.run and not sys.stdin.isatty():
