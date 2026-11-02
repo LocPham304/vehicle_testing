@@ -14,7 +14,7 @@ from vehicle_testing.config import (
 )
 from vehicle_testing.hardware.servos import (
     DryRunServoOutput, KernelPWMLiftOutput, HardwarePWMClawOutput, HandController, ClawController,
-    validate_hand_seconds, validate_claw_seconds,
+    validate_hand_angle, validate_hand_seconds, validate_claw_seconds,
 )
 from vehicle_testing.hardware.motors import (
     DryRunOutput,
@@ -52,8 +52,8 @@ HELP = f"""Lenh:
   duoi_phai <giay> [PWM]  Di lui phai 45 do, vi du: duoi_phai 0.5 0.3
   trai <do>           Quay tai cho sang trai, vi du: trai 15
   phai <do>           Quay tai cho sang phai, vi du: phai 90
-  nang [giay]        Nang toi {SERVO_UP_ANGLE:g} do, vi du: nang 4
-  ha [giay]          Ha toi {SERVO_DOWN_ANGLE:g} do, vi du: ha 4
+  nang <goc> [giay]  Den goc tuyet doi 0..90 do, vi du: nang 60
+  ha <goc> [giay]    Den goc tuyet doi 0..90 do, vi du: ha 20 3
   mo_cang [giay]     Mo cang toi {CLAW_OPEN_ANGLE:g} do, vi du: mo_cang 2
   dong_cang [giay]   Dong cang toi {CLAW_CLOSE_ANGLE:g} do, vi du: dong_cang 2
   ngung <giay>       Them khoang nghi, vi du: ngung 0.5
@@ -64,7 +64,7 @@ HELP = f"""Lenh:
 
 
 def parse_command(line: str) -> tuple[str, float, float]:
-    """Return (action, seconds_or_degrees, pwm)."""
+    """Return (action, value, option): lift angle/duration, otherwise value/PWM."""
     parts = line.lower().split()
     controls = {"chay": "run", "dung": "stop", "thoat": "exit"}
     if len(parts) == 1 and parts[0] in controls:
@@ -76,13 +76,15 @@ def parse_command(line: str) -> tuple[str, float, float]:
             raise ValueError("Thoi gian cang phai la so, vi du: mo_cang 2.") from error
         validate_claw_seconds(seconds)
         return CLAW_COMMANDS[parts[0]], seconds, 0.0
-    if len(parts) in (1, 2) and parts[0] in HAND_COMMANDS:
+    if len(parts) in (2, 3) and parts[0] in HAND_COMMANDS:
         try:
-            seconds = float(parts[1]) if len(parts) == 2 else SERVO_MOVE_SECONDS
+            angle = float(parts[1])
+            seconds = float(parts[2]) if len(parts) == 3 else SERVO_MOVE_SECONDS
         except ValueError as error:
-            raise ValueError("Thoi gian nang/ha phai la so, vi du: nang 4.") from error
+            raise ValueError("Goc va thoi gian nang/ha phai la so, vi du: nang 60 2.") from error
+        validate_hand_angle(angle)
         validate_hand_seconds(seconds)
-        return HAND_COMMANDS[parts[0]], seconds, 0.0
+        return HAND_COMMANDS[parts[0]], angle, seconds
     if len(parts) == 2 and parts[0] == "ngung":
         try:
             seconds = float(parts[1])
@@ -99,7 +101,7 @@ def parse_command(line: str) -> tuple[str, float, float]:
         validate_turn(direction, angle)
         return direction, angle, TURN_SPEED
     if len(parts) not in (2, 3) or parts[0] not in TIMED_COMMANDS:
-        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha/mo_cang/dong_cang [giay], ngung <giay>, chay, dung, hoac thoat.")
+        raise ValueError(f"Dung cu phap: {'/'.join(TIMED_COMMANDS)} <giay> [PWM], trai/phai <do>, nang/ha <goc> [giay], mo_cang/dong_cang [giay], ngung <giay>, chay, dung, hoac thoat.")
     try:
         seconds = float(parts[1])
         speed = float(parts[2]) if len(parts) == 3 else DEFAULT_SPEED
@@ -160,9 +162,9 @@ def run_session(controller: MotorController, hand: HandController | None = None,
                     if hand is None:
                         raise RuntimeError("Chua cau hinh bo dieu khien tay.")
                     if step == "hand_up":
-                        hand.hand_up(amount)
+                        hand.hand_up(angle=amount, seconds=pwm)
                     else:
-                        hand.hand_down(amount)
+                        hand.hand_down(angle=amount, seconds=pwm)
                 elif step == "pause":
                     controller.pause(amount)
                 elif step == "left":
@@ -188,8 +190,8 @@ def run_session(controller: MotorController, hand: HandController | None = None,
                 logger.info("Da luu lenh #%d: %s %g giay. Go chay de bat dau.",
                             len(pending), CLAW_LABELS[action], value)
             elif action in HAND_LABELS:
-                logger.info("Da luu lenh #%d: %s %g giay. Go chay de bat dau.",
-                            len(pending), HAND_LABELS[action], value)
+                logger.info("Da luu lenh #%d: %s toi %g do trong %g giay. Go chay de bat dau.",
+                            len(pending), HAND_LABELS[action], value, speed)
             elif action == "pause":
                 logger.info("Da luu lenh #%d: ngung %g giay. Go chay de bat dau.", len(pending), value)
             elif action in ("left", "right"):

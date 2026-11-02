@@ -5,7 +5,7 @@ Adafruit để điều khiển PCA9685. Nhập lệnh ở terminal để chạy 
 tiến/lùi hoặc trượt ngang theo thời gian, cùng lệnh quay tại chỗ theo góc ước lượng:
 soạn các dòng lệnh trước, gõ `chay` để thực hiện kịch bản,
 rồi gửi lệnh dừng sau từng chuyển động. Không đo quãng đường hoặc tốc độ thực tế.
-Tay nâng/hạ dùng GPIO BCM 18 (hạ −10°, nâng 80°), càng dùng GPIO BCM 12 (mở 100°, đóng 0°).
+Tay nâng/hạ dùng GPIO BCM 18 (góc đích 0–90°), càng dùng GPIO BCM 12 (mở 100°, đóng 0°).
 
 ## Cấu trúc
 
@@ -610,6 +610,9 @@ cứng hoặc dừng thất bại trả mã 1. Bình thường trả mã 0.
 
 Servo DS-S006M nâng/hạ nối vào **GPIO BCM 18** trên Raspberry Pi, dùng driver
 **`pwm-gpio` của kernel ở 50 Hz**, qua API sysfs của `rpi-hardware-pwm`.
+Main dùng `adafruit_motor.servo.Servo` và adapter PWM giống file thử
+`tests/test_lift_angle.py` đã được người dùng chấp nhận. Sau khi cập nhật source,
+cài dependency mới bằng `.venv/bin/python -m pip install -r requirements.txt`.
 Chân này đã được người dùng xác nhận bằng phép thử `probe_servo.py --pin 18`.
 Tần số này độc lập với PWM 1000 Hz của PCA9685 điều khiển bánh xe.
 Không chạy đồng thời với chương trình khác đang dùng GPIO 18 hoặc GPIO 12.
@@ -640,23 +643,29 @@ Sau khi nạp overlay này, không chạy `probe_servo.py --pin 18` hoặc chư�
 `RPi.GPIO` khác trên BCM 18, kể cả khi `main.py` đã thoát: kernel đang sở hữu chân.
 
 ```text
-nang 4
-ha 4
+nang 60
+ha 20 3
+ha 0
 chay
 ```
 
-Chỉ dùng `nang [giây]` và `ha [giây]`: nâng tới **80°**, hạ tới **−10°**.
-Bỏ số giây thì mặc định 2 giây (`SERVO_MOVE_SECONDS`); thời gian phải hữu hạn,
-ít nhất 2 giây (`SERVO_MIN_MOVE_SECONDS`). Không nhận thêm góc hoặc PWM.
-Lệnh đặt góc tay cũ đã được bỏ khỏi CLI.
+Cú pháp là **`nang <góc> [giây]`** và **`ha <góc> [giây]`**. Cả hai nhận
+**góc đích tuyệt đối 0–90°**, không phải số độ cộng/trừ. Ví dụ `nang 60`
+yêu cầu tới 60° trong 2 giây; `ha 20 3` yêu cầu tới 20° trong 3 giây.
+Góc bắt buộc; bỏ thời gian thì mặc định 2 giây (`SERVO_MOVE_SECONDS`).
+Thời gian phải hữu hạn trong 0,2–60 giây, giống file thử. Góc ngoài giới hạn,
+NaN, infinity hoặc thiếu góc bị từ chối. Không nhận PWM cho lệnh nâng/hạ.
+**Cú pháp cũ đã đổi: `nang 4` giờ là góc 4°, không phải 4 giây.**
 
-**Nâng/hạ đã được cho phép chạy thử theo yêu cầu người dùng**, giữ mốc −10°/80°.
-Trong `config.py`, cấu hình thử đã được đổi theo chiều vật lý thực tế (xung tăng là nâng):
+**Nâng/hạ dùng mốc quy ước 0°/90°**, giữ nguyên xung người dùng đã thử.
+Trong `config.py`, xung tăng là nâng:
 
 ```python
 SERVO_CALIBRATED = False
-SERVO_DOWN_PULSE_US = 450.0   # Mốc hạ người dùng đã thử và chọn.
-SERVO_UP_PULSE_US = 1400.0    # Nâng 80°.
+SERVO_DOWN_ANGLE = 0.0
+SERVO_UP_ANGLE = 90.0
+SERVO_DOWN_PULSE_US = 450.0   # Mốc hạ 0°.
+SERVO_UP_PULSE_US = 1400.0    # Mốc nâng 90°.
 ```
 
 Người dùng xác nhận hạ 450 µs phù hợp sau khi tự thử các thông số; giữ nâng
@@ -670,35 +679,37 @@ Người dùng đã báo tay chạm/ép điểm chặn với ánh xạ cũ; đ�
 hai đầu hành trình đã đúng. Nếu chạm khung, dùng Ctrl+C để dừng phép thử và sửa
 hai mốc xung theo thực tế. Xem [ghi chú hiệu chỉnh tay](docs/lift-calibration.md).
 
-Phép thử `nang 4` bật lên ngay và chạm chặn; lần dò 1510/1520 µs sau đó vẫn
+Trong phiên bản cũ, phép thử `nang 4` bật lên ngay và chạm chặn; lần dò 1510/1520 µs sau đó vẫn
 giật rất mạnh. Các số 1500/500 µs chưa được xác nhận phù hợp. Đã dừng hướng
 dẫn thử tiếp các đợt xung ngắn tại điểm chặn. Công cụ dò không bảo đảm chuyển
 động chậm; xem ghi chú trên về dữ liệu cần đo trước khi chọn mốc mới.
 
-**Trước khi khởi động, để tay ở vị trí hạ −10°**, theo vị trí khởi đầu người dùng
+**Trước khi khởi động, để tay ở vị trí hạ quy ước 0°**, theo vị trí khởi đầu người dùng
 đã xác nhận có thể chuẩn bị. Đây là vị trí giả định (`SERVO_START_ANGLE`), không phải góc đọc từ cảm biến;
 khởi tạo không tự phát xung hoặc đưa tay về gốc. Các lệnh chuyển góc theo từng
 bước tối đa 20 ms, tăng/giảm tốc nhẹ ở hai đầu, sau đó chờ thêm 0,1 giây.
-`nang 4` chuyển yêu cầu −10° → 80° trong 4 giây; `ha 4` đi ngược lại.
+`nang 60 4` chuyển yêu cầu từ góc đang nhớ tới 60° trong 4 giây;
+`ha 20` chuyển tới 20° trong 2 giây mặc định.
 Gửi lại cùng một đích đã yêu cầu sẽ bỏ qua. Lỗi/ngắt giữa chừng làm mất mốc và
 chặn các lệnh tay tiếp theo; cần chuẩn bị lại mốc hạ và khởi động lại.
 
-Các số −10°/80° là mốc góc quy ước của cơ cấu. Chương trình
-nội suy giữa `SERVO_DOWN_PULSE_US` và `SERVO_UP_PULSE_US`; không tự suy ra xung từ
-số độ. Xung nâng/hạ được kiểm tra trong 450–2500 µs để chấp nhận mốc 450 µs
+Các số 0°/90° là mốc góc quy ước mới của cơ cấu, thay cho −10°/80°;
+chưa phải phép đo góc cơ khí thực tế. Chương trình nội suy giữa
+`SERVO_DOWN_PULSE_US` và `SERVO_UP_PULSE_US`. Adafruit chuyển góc sang duty
+16-bit, có lượng tử hóa nhỏ. Xung cấu hình được kiểm tra trong 450–2500 µs để chấp nhận mốc 450 µs
 người dùng đã thử; đây là giới hạn phần mềm, không xác nhận toàn khoảng đó
 là hành trình cơ khí cho phép.
 
 Enter chỉ lưu lệnh; `chay` mới thực hiện. Có thể xen kẽ với lệnh bánh xe và càng;
 chương trình gửi lệnh dừng bánh trước khi điều khiển tay. BCM 18 dùng bộ định thời
 kernel để tạo xung thay cho luồng Python; chưa xác nhận độ rung trên cơ cấu thật.
-Giữ PWM chạy giữa các bước, chỉ đổi duty, bỏ qua xung nguyên µs trùng nhau.
+Giữ PWM chạy giữa các bước, chỉ đổi duty, bỏ qua duty 16-bit trùng nhau.
 Không đổi overlay để xuất PWM0 phần cứng ra BCM 18,
 vì kênh PWM0 đang dùng cho càng BCM 12.
 
 PWM servo nâng/hạ mặc định được tắt sau mỗi hành trình (`SERVO_HOLD_POSITION=False`),
-sau khoảng chờ cuối 0,1 giây, để không tiếp tục giữ cứng tay. Servo càng cũng
-mặc định ngắt PWM sau lệnh như mô tả dưới đây. Cơ cấu có thể hạ theo tải khi mất
+sau khoảng chờ cuối 0,1 giây, để không tiếp tục giữ cứng tay. Không cần `--hold`.
+Servo càng giữ cấu hình giữ/nhả riêng như mô tả dưới đây. Cơ cấu có thể hạ theo tải khi mất
 lực giữ. Nếu di chuyển tay bằng tay, chương trình không cập nhật được góc thực;
 cần chuẩn bị lại mốc hạ và khởi động lại trước khi chạy tiếp.
 Đặt `SERVO_HOLD_POSITION=True` khi cần giữ lực và đã xác nhận cơ cấu phù hợp.
@@ -730,7 +741,7 @@ chay
 Chỉ dùng `mo_cang [giây]` và `dong_cang [giây]`, không cần lệnh đặt mốc góc.
 Mở yêu cầu **100°**, đóng yêu cầu **0°**. Giới hạn riêng của càng là 0–100°.
 Các giá trị riêng của càng nằm ở `CLAW_OPEN_ANGLE`, `CLAW_CLOSE_ANGLE`,
-`CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ dùng riêng −10–80°.
+`CLAW_MIN_ANGLE` và `CLAW_MAX_ANGLE` trong `config.py`; nâng/hạ dùng riêng 0–90°.
 Người dùng xác nhận càng có thể khép; các góc yêu cầu chưa phải số đo cơ khí.
 
 **Trước mỗi lần khởi động chương trình, để càng khép ở vị trí 0°**.

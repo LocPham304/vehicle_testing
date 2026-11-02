@@ -1,4 +1,18 @@
-# Cấu hình thử nâng/hạ −10°/80° và hiệu chỉnh xung
+# Nâng/hạ theo góc tuyệt đối 0–90°
+
+Từ bản tích hợp ngày 2026-11-02, main dùng `nang <góc> [giây]` và
+`ha <góc> [giây]`, cùng đường phát xung Adafruit Servo/pwm-gpio với file thử
+`tests/test_lift_angle.py` đã được người dùng chấp nhận. Mốc cũ −10°/80° được
+đặt lại tên là 0°/90°, giữ nguyên hai xung 450/1400 µs, chưa đo góc cơ khí.
+Chuẩn bị tay tại mốc hạ quy ước 0° trước khi chạy main. Nhập `chay` để thực
+hiện kịch bản; mặc định 2 giây/lệnh và nhả PWM sau khi chờ cuối 0,1 giây.
+Thời gian tùy chọn trong 0,2–60 giây. Không cần `--hold`.
+Xem [hướng dẫn hiện tại](../README.md#tay-nânghạ-qua-gpio-bcm-18).
+
+Phần dưới là lịch sử hiệu chỉnh trước khi tích hợp; cú pháp `nang 4` và các
+nhãn −10°/80° trong lịch sử thuộc phiên bản cũ, không phải cú pháp đang dùng.
+
+## Lịch sử cấu hình thử nâng/hạ −10°/80° và hiệu chỉnh xung
 
 Code hiện tại: `hardware/servos.py` và `hardware/pwm.py`; cấu hình vẫn sửa ở
 `config.py`. Các tên file cũ trong phần lịch sử bên dưới mô tả những lần thử

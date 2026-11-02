@@ -20,11 +20,11 @@ class LiftCalibrationTests(unittest.TestCase):
         hand = self.module.HandController(lambda: output, sleeper=waits.append)
         self.assertFalse(self.module.SERVO_CALIBRATED)
         hand.hand_up(4)
-        self.assertEqual(output.set_angle.call_args.args, (80,))
+        self.assertEqual(output.set_angle.call_args.args, (90,))
         self.assertAlmostEqual(sum(waits), 4.1)
         waits.clear()
         hand.hand_down(3)
-        self.assertEqual(output.set_angle.call_args.args, (-10,))
+        self.assertEqual(output.set_angle.call_args.args, (0,))
         self.assertAlmostEqual(sum(waits), 3.1)
 
     def test_missing_pulses_refuse_both_moves_before_gpio(self):
@@ -39,9 +39,9 @@ class LiftCalibrationTests(unittest.TestCase):
     def test_explicit_measured_pulses_define_the_logical_angle_mapping(self):
         with patch.multiple(self.module, SERVO_CALIBRATED=True, SERVO_DOWN_PULSE_US=1420.0,
                             SERVO_UP_PULSE_US=1080.0, create=True):
-            self.assertAlmostEqual(self.module.hand_angle_to_pulse_us(-10), 1420)
-            self.assertAlmostEqual(self.module.hand_angle_to_pulse_us(80), 1080)
-            self.assertAlmostEqual(self.module.hand_angle_to_pulse_us(35), 1250)
+            self.assertAlmostEqual(self.module.hand_angle_to_pulse_us(0), 1420)
+            self.assertAlmostEqual(self.module.hand_angle_to_pulse_us(90), 1080)
+            self.assertAlmostEqual(self.module.hand_angle_to_pulse_us(45), 1250)
 
     def test_bad_calibration_never_opens_gpio(self):
         for down, up in ((None, None), (1420, None), (1420, 1420),
@@ -62,7 +62,7 @@ class LiftCalibrationTests(unittest.TestCase):
             hand = self.module.HandController(lambda: output, sleeper=lambda _: None,
                                                calibration_required=False)
             hand.hand_up(4)
-        self.assertEqual(output.set_angle.call_args.args, (80,))
+        self.assertEqual(output.set_angle.call_args.args, (90,))
 
     def test_claw_commands_remain_available_with_missing_lift_pulses(self):
         factory = Mock()
@@ -80,7 +80,7 @@ class LiftCalibrationTests(unittest.TestCase):
         with patch.multiple(self.module, SERVO_CALIBRATED=True, SERVO_DOWN_PULSE_US=1420.0,
                             SERVO_UP_PULSE_US=1080.0, SERVO_UP_ANGLE=70):
             with self.assertRaises(ValueError):
-                self.module.hand_angle_to_pulse_us(80)
+                self.module.hand_angle_to_pulse_us(90)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ class HandControllerTests(unittest.TestCase):
         self.hand = self.module.HandController(self.factory, sleeper=lambda _: None)
 
     def test_invalid_seconds_never_open_gpio(self):
-        for seconds in (0, 0.5, -1, float("nan"), float("inf")):
+        for seconds in (0, 0.1, -1, 61, float("nan"), float("inf")):
             for method in (self.hand.hand_up, self.hand.hand_down):
                 with self.subTest(seconds=seconds), self.assertRaises(ValueError):
                     method(seconds)
@@ -102,9 +102,9 @@ class GPIOOutputTests(unittest.TestCase):
         output = self.open()
         self.gpio.PWM.assert_called_once_with(18, 50)
         self.pwm.start.assert_called_once_with(0)
-        output.set_angle(-10)
+        output.set_angle(0)
         self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 7.5)
-        output.set_angle(80)
+        output.set_angle(90)
         self.assertAlmostEqual(self.pwm.ChangeDutyCycle.call_args.args[0], 2.5)
         self.pwm.stop.assert_not_called()
         output.close()
@@ -113,7 +113,7 @@ class GPIOOutputTests(unittest.TestCase):
 
     def test_invalid_angle_does_not_change_pwm(self):
         output = self.open()
-        for angle in (-11, 81, float("nan")):
+        for angle in (-1, 91, float("nan")):
             with self.assertRaises(ValueError):
                 output.set_angle(angle)
         self.pwm.ChangeDutyCycle.assert_not_called()
@@ -156,10 +156,10 @@ class HandSessionTests(unittest.TestCase):
             self.assertTrue(all(duty == 0 for duty in states.values()))
             self.output.angles.append(angle)
         self.output.set_angle = record
-        self.session(["tien 1", "nang 2", "ha 3", "chay", "nang", "chay", "chay", "thoat"])
-        self.assertEqual(self.output.angles[0], -10)
-        self.assertEqual(self.output.angles[-1], 80)
-        self.assertEqual(self.output.angles.count(80), 3)
+        self.session(["tien 1", "nang 90 2", "ha 0 3", "chay", "nang 90", "chay", "chay", "thoat"])
+        self.assertEqual(self.output.angles[0], 0)
+        self.assertEqual(self.output.angles[-1], 90)
+        self.assertEqual(self.output.angles.count(90), 3)
 
     def test_cancelled_draft_and_eof_never_initialize_gpio(self):
         for lines in (["nang 4", "thoat"], ["nang 4", EOFError()],
@@ -170,7 +170,7 @@ class HandSessionTests(unittest.TestCase):
     def test_servo_failure_aborts_later_wheel_move(self):
         self.output.set_angle = Mock(side_effect=OSError("write failed"))
         with self.assertRaises(OSError):
-            self.session(["nang", "tien 1", "chay"])
+            self.session(["nang 60", "tien 1", "chay"])
         self.assertTrue(self.output.released)
         self.assertFalse(any(call.args[1] > 0 for call in self.motor.set_duty.call_args_list))
 
@@ -178,7 +178,7 @@ class HandSessionTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         result = subprocess.run(
             [sys.executable, str(root / "vehicle_testing/main.py"), "--dry-run"],
-            input="nang 2\nha 2\nchay\nthoat\n", cwd=root,
+            input="nang 60\nha 20\nchay\nthoat\n", cwd=root,
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

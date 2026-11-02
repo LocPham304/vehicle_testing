@@ -15,7 +15,7 @@ from vehicle_testing.config import (
     SERVO_BCM_PIN, SERVO_PWM_FREQUENCY_HZ, SERVO_MIN_ANGLE,
     SERVO_MAX_ANGLE, SERVO_UP_ANGLE, SERVO_DOWN_ANGLE, SERVO_START_ANGLE,
     SERVO_CALIBRATED, SERVO_DOWN_PULSE_US, SERVO_UP_PULSE_US,
-    SERVO_MOVE_SECONDS, SERVO_MIN_MOVE_SECONDS,
+    SERVO_MOVE_SECONDS, SERVO_MIN_MOVE_SECONDS, SERVO_MAX_MOVE_SECONDS,
     SERVO_UPDATE_INTERVAL_SECONDS, SERVO_SETTLE_SECONDS, SERVO_HOLD_POSITION,
     CLAW_BCM_PIN, CLAW_MIN_ANGLE, CLAW_MAX_ANGLE, CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE,
     CLAW_HOLD_POSITION, CLAW_HOLD_OPEN_POSITION, CLAW_MOVE_SECONDS,
@@ -34,8 +34,8 @@ def validate_hand_angle(angle: float) -> None:
 
 
 def validate_hand_seconds(seconds: float) -> None:
-    if not math.isfinite(seconds) or seconds < SERVO_MIN_MOVE_SECONDS:
-        raise ValueError(f"Thoi gian nang/ha phai huu han va it nhat {SERVO_MIN_MOVE_SECONDS:g} giay.")
+    if not math.isfinite(seconds) or not SERVO_MIN_MOVE_SECONDS <= seconds <= SERVO_MAX_MOVE_SECONDS:
+        raise ValueError(f"Thoi gian nang/ha phai huu han trong [{SERVO_MIN_MOVE_SECONDS:g}, {SERVO_MAX_MOVE_SECONDS:g}] giay.")
 
 
 def validate_hand_calibration() -> None:
@@ -164,8 +164,43 @@ class GPIOServoOutput:
             self._gpio.cleanup(self._pin)
 
 
+class KernelPWMAdapter:
+    """Adafruit's 16-bit PWM interface over an already opened kernel provider."""
+
+    frequency = SERVO_PWM_FREQUENCY_HZ
+
+    def __init__(self, pwm) -> None:
+        self._pwm = pwm
+        self._duty = 0
+        self._running = False
+
+    @property
+    def duty_cycle(self) -> int:
+        return self._duty
+
+    @duty_cycle.setter
+    def duty_cycle(self, value: int) -> None:
+        if not isinstance(value, int) or not 0 <= value <= 0xFFFF:
+            raise ValueError("Duty cycle phai la so nguyen 16-bit.")
+        if value == 0:
+            self.release()
+        elif value != self._duty:
+            duty = value / 0xFFFF * 100
+            if self._running:
+                self._pwm.change_duty_cycle(duty)
+            else:
+                self._pwm.start(duty)
+                self._running = True
+            self._duty = value
+
+    def release(self) -> None:
+        self._pwm.stop()
+        self._duty = 0
+        self._running = False
+
+
 class KernelPWMLiftOutput:
-    """BCM 18 kernel pwm-gpio output, separate from BCM 12 hardware PWM0."""
+    """Adafruit Servo on BCM 18 pwm-gpio, separate from the claw's PWM0."""
 
     def __init__(self, pin: int = SERVO_BCM_PIN) -> None:
         if pin != SERVO_BCM_PIN:
@@ -177,16 +212,22 @@ class KernelPWMLiftOutput:
         chip = find_gpio_pwm_chip(pin)
         try:
             hardware = importlib.import_module("rpi_hardware_pwm")
+            servo_module = importlib.import_module("adafruit_motor.servo")
         except ImportError as error:
-            raise RuntimeError("Thieu rpi-hardware-pwm: cai requirements.txt tren Raspberry Pi.") from error
+            raise RuntimeError("Can rpi-hardware-pwm va adafruit-circuitpython-motor: cai requirements.txt tren Raspberry Pi.") from error
         self._pwm = None
+        self._adapter = None
+        self._servo = None
         self._closed = False
-        self._running = False
-        self._pulse_us: int | None = None
         try:
             self._pwm = hardware.HardwarePWM(pwm_channel=0,
                                              hz=SERVO_PWM_FREQUENCY_HZ, chip=chip)
+            self._adapter = KernelPWMAdapter(self._pwm)
             self.release()
+            self._servo = servo_module.Servo(
+                self._adapter, actuation_range=SERVO_UP_ANGLE - SERVO_DOWN_ANGLE,
+                min_pulse=SERVO_DOWN_PULSE_US, max_pulse=SERVO_UP_PULSE_US,
+            )
         except (Exception, KeyboardInterrupt) as error:
             try:
                 self.close()
@@ -200,23 +241,17 @@ class KernelPWMLiftOutput:
             raise
 
     def set_angle(self, angle: float) -> None:
-        pulse_us = round(hand_angle_to_pulse_us(angle))
+        hand_angle_to_pulse_us(angle)  # Validate angle and calibration before output.
         if self._closed:
             raise RuntimeError("Dau ra nang/ha da dong.")
-        if pulse_us != self._pulse_us:
-            duty = pulse_us / (1_000_000 / SERVO_PWM_FREQUENCY_HZ) * 100
-            if self._running:
-                self._pwm.change_duty_cycle(duty)
-            else:
-                self._pwm.start(duty)
-                self._running = True
-            self._pulse_us = pulse_us
+        self._servo.angle = angle - SERVO_DOWN_ANGLE
 
     def release(self) -> None:
         if not self._closed and self._pwm is not None:
-            self._pwm.stop()
-            self._running = False
-            self._pulse_us = None
+            if self._adapter is not None:
+                self._adapter.release()
+            else:
+                self._pwm.stop()
 
     def close(self) -> None:
         if self._closed:
@@ -296,7 +331,7 @@ class HardwarePWMClawOutput:
 
 
 class HandController:
-    """Timed fixed lift endpoints on BCM 18; position starts at the lowered assumption."""
+    """Absolute lift targets on BCM 18, starting at the assumed lowered position."""
 
     def __init__(self, output_factory: Callable[[], ServoOutput],
                  sleeper: Callable[[float], None] = time.sleep, *,
@@ -357,11 +392,13 @@ class HandController:
             raise
         self._angle = angle
 
-    def hand_up(self, seconds: float = SERVO_MOVE_SECONDS) -> None:
-        self._move(SERVO_UP_ANGLE, seconds, "NANG")
+    def hand_up(self, seconds: float = SERVO_MOVE_SECONDS, *,
+                angle: float = SERVO_UP_ANGLE) -> None:
+        self._move(angle, seconds, "NANG")
 
-    def hand_down(self, seconds: float = SERVO_MOVE_SECONDS) -> None:
-        self._move(SERVO_DOWN_ANGLE, seconds, "HA")
+    def hand_down(self, seconds: float = SERVO_MOVE_SECONDS, *,
+                  angle: float = SERVO_DOWN_ANGLE) -> None:
+        self._move(angle, seconds, "HA")
 
     def close(self) -> None:
         if self._closed:

@@ -8,6 +8,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from vehicle_testing.tests.servo_double import mock_adafruit_servo
+
 
 class GPIOPWMDiscoveryTests(unittest.TestCase):
     def setUp(self):
@@ -77,6 +79,7 @@ class GPIOPWMDiscoveryTests(unittest.TestCase):
 
 class KernelLiftOutputTests(unittest.TestCase):
     def setUp(self):
+        self.adafruit = mock_adafruit_servo(self)
         self.module = importlib.import_module("vehicle_testing.hardware.servos")
         calibration = patch.multiple(self.module, SERVO_CALIBRATED=True,
                                     SERVO_DOWN_PULSE_US=1420.0, SERVO_UP_PULSE_US=1080.0)
@@ -97,28 +100,52 @@ class KernelLiftOutputTests(unittest.TestCase):
         self.find.assert_called_once_with(18)
         self.hardware.HardwarePWM.assert_called_once_with(pwm_channel=0, hz=50, chip=3)
         self.pwm.stop.assert_called_once()
-        output.set_angle(-10)
-        self.assertAlmostEqual(self.pwm.start.call_args.args[0], 7.1)
-        output.set_angle(-9.999)  # Same rounded pulse: no change/restart.
+        output.set_angle(0)
+        self.assertAlmostEqual(self.pwm.start.call_args.args[0], 7.1, delta=0.002)
+        output.set_angle(0.001)  # Same quantized duty: no change/restart.
         self.pwm.change_duty_cycle.assert_not_called()
-        output.set_angle(80)
-        self.assertAlmostEqual(self.pwm.change_duty_cycle.call_args.args[0], 5.4)
+        output.set_angle(90)
+        self.assertAlmostEqual(self.pwm.change_duty_cycle.call_args.args[0], 5.4, delta=0.002)
         self.pwm.start.assert_called_once()
         output.release()
-        output.set_angle(80)
+        output.set_angle(90)
         self.assertEqual(self.pwm.start.call_count, 2)
+
+    def test_adafruit_receives_calibration_without_starting_servo_on_init(self):
+        output = self.output()
+        self.adafruit.Servo.assert_called_once_with(
+            output._adapter, actuation_range=90, min_pulse=1420.0, max_pulse=1080.0)
+        self.assertEqual(output._adapter.frequency, 50)
+        self.pwm.start.assert_not_called()
+        self.pwm.change_duty_cycle.assert_not_called()
+
+    def test_adafruit_constructor_failure_stops_own_pwm(self):
+        self.adafruit.Servo.side_effect = ValueError("servo init failed")
+        with self.assertRaisesRegex(RuntimeError, "servo init failed"):
+            self.output()
+        self.assertEqual(self.pwm.stop.call_count, 2)
+        self.pwm.start.assert_not_called()
+
+    def test_adapter_rejects_invalid_duty_without_hardware_writes(self):
+        adapter = self.module.KernelPWMAdapter(self.pwm)
+        for duty in (-1, 65536, float("nan"), 1.5):
+            with self.subTest(duty=duty), self.assertRaises(ValueError):
+                adapter.duty_cycle = duty
+        self.pwm.start.assert_not_called()
+        self.pwm.change_duty_cycle.assert_not_called()
 
     def test_user_tested_450_us_lift_endpoint_is_accepted_but_lower_values_are_rejected(self):
         with patch.multiple(self.module, SERVO_DOWN_PULSE_US=450.0, SERVO_UP_PULSE_US=1400.0):
             output = self.output()
-            output.set_angle(-10)
-            self.pwm.start.assert_called_once_with(2.25)
-            output.set_angle(80)
-            self.assertAlmostEqual(self.pwm.change_duty_cycle.call_args.args[0], 7.0)
+            output.set_angle(0)
+            self.assertEqual(self.pwm.start.call_count, 1)
+            self.assertAlmostEqual(self.pwm.start.call_args.args[0], 2.25, delta=0.002)
+            output.set_angle(90)
+            self.assertAlmostEqual(self.pwm.change_duty_cycle.call_args.args[0], 7.0, delta=0.002)
         self.pwm.change_duty_cycle.reset_mock()
         with patch.object(self.module, "SERVO_DOWN_PULSE_US", 449.0):
             with self.assertRaises(ValueError):
-                output.set_angle(-10)
+                output.set_angle(0)
         self.pwm.change_duty_cycle.assert_not_called()
 
     def test_unmeasured_profile_opens_kernel_output_with_an_explicit_warning(self):
@@ -126,7 +153,7 @@ class KernelLiftOutputTests(unittest.TestCase):
             with self.assertLogs(self.module.__name__, level="WARNING") as logs:
                 output = self.output()
         self.assertIn("chua do", " ".join(logs.output))
-        output.set_angle(-10)
+        output.set_angle(0)
         self.pwm.start.assert_called_once()
 
     def test_missing_pulses_refuse_even_before_discovery(self):
@@ -144,7 +171,7 @@ class KernelLiftOutputTests(unittest.TestCase):
 
     def test_invalid_angle_or_calibration_never_changes_duty(self):
         output = self.output()
-        for angle in (-11, 81, float("nan")):
+        for angle in (-1, 91, float("nan")):
             with self.assertRaises(ValueError):
                 output.set_angle(angle)
         with patch.object(self.module, "SERVO_DOWN_PULSE_US", None):

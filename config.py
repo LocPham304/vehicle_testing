@@ -42,10 +42,10 @@ SERVO_BCM_PIN = 18
 # Requires dtoverlay=pwm-gpio,gpio=18; never route hardware PWM0 to this pin.
 CLAW_BCM_PIN = 12
 SERVO_PWM_FREQUENCY_HZ = 50
-SERVO_MIN_ANGLE = -10.0
-SERVO_MAX_ANGLE = 80.0
-SERVO_UP_ANGLE = 80.0
-SERVO_DOWN_ANGLE = -10.0
+SERVO_MIN_ANGLE = 0.0
+SERVO_MAX_ANGLE = 90.0
+SERVO_UP_ANGLE = 90.0
+SERVO_DOWN_ANGLE = 0.0
 # User will prepare the arm at the lowered position before starting.
 SERVO_START_ANGLE = SERVO_DOWN_ANGLE
 # Measured physical direction: increasing pulse raises the arm.
@@ -54,9 +54,10 @@ SERVO_START_ANGLE = SERVO_DOWN_ANGLE
 # The 450 us lower limit is specific to this lift, not a general servo default.
 SERVO_CALIBRATED = False
 SERVO_DOWN_PULSE_US = 450.0   # User-tested lower endpoint (2.25% duty).
-SERVO_UP_PULSE_US = 1400.0    # Logical 80 -> Raised position (~7% duty, avoids upper stop).
+SERVO_UP_PULSE_US = 1400.0    # Logical 90 -> Raised position (~7% duty).
 SERVO_MOVE_SECONDS = 2.0
-SERVO_MIN_MOVE_SECONDS = 2.0
+SERVO_MIN_MOVE_SECONDS = 0.2
+SERVO_MAX_MOVE_SECONDS = 60.0
 SERVO_UPDATE_INTERVAL_SECONDS = 0.02
 SERVO_SETTLE_SECONDS = 0.1
 # Release the lift after a move so it does not resist manual repositioning.

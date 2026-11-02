@@ -5,9 +5,9 @@ Install on the Pi, inside its virtual environment:
     python -m pip install adafruit-circuitpython-motor rpi-hardware-pwm
 
 Run from raspberry-py, or copy this single file to the Pi:
-    python stem_project_test/test_lift_angle.py --dry-run
-    python stem_project_test/test_lift_angle.py --run
-    python stem_project_test/test_lift_angle.py --run --hold --seconds 3
+    python vehicle_testing/tests/test_lift_angle.py --dry-run
+    python vehicle_testing/tests/test_lift_angle.py --run
+    python vehicle_testing/tests/test_lift_angle.py --run --hold --seconds 3
 
 Commands execute immediately, without 'chay':
     nang 60       absolute target 60 degrees, NOT 60 seconds or +60 degrees

@@ -1,4 +1,4 @@
-"""Regression checks for fixed lift endpoints and seconds-only commands."""
+"""Regression checks for timed lift interpolation and absolute CLI angles."""
 
 import importlib
 import unittest
@@ -13,11 +13,11 @@ class TimedHandTests(unittest.TestCase):
         self.module = importlib.import_module("vehicle_testing.hardware.servos")
         mock_lift_calibration(self, self.module)
 
-    def test_commands_only_accept_seconds_and_remove_tay_goc(self):
-        self.assertEqual(parse_command("nang"), ("hand_up", 2, 0))
-        self.assertEqual(parse_command("ha 4"), ("hand_down", 4, 0))
+    def test_commands_accept_angles_and_keep_tay_goc_removed(self):
+        self.assertEqual(parse_command("nang 60"), ("hand_up", 60, 2))
+        self.assertEqual(parse_command("ha 20 4"), ("hand_down", 20, 4))
         self.assertNotIn("tay_goc", HELP)
-        for command in ("tay_goc 40", "nang 0.5", "ha -10", "nang nan", "ha 2 0.5"):
+        for command in ("tay_goc 40", "nang", "ha -10", "nang nan", "ha 20 0.1"):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 parse_command(command)
 
@@ -36,8 +36,8 @@ class TimedHandTests(unittest.TestCase):
         hand = self.module.HandController(factory, sleeper=wait)
         hand.hand_down()
         factory.assert_not_called()
-        for method, start, end, seconds in ((hand.hand_up, -10, 80, 2),
-                                          (hand.hand_down, 80, -10, 3)):
+        for method, start, end, seconds in ((hand.hand_up, 0, 90, 2),
+                                          (hand.hand_down, 90, 0, 3)):
             with self.subTest(end=end):
                 elapsed = 0
                 writes.clear()
@@ -47,7 +47,7 @@ class TimedHandTests(unittest.TestCase):
                 self.assertAlmostEqual(writes[-1][0], seconds)
                 self.assertAlmostEqual(elapsed, seconds + 0.1)
                 angles = [angle for _, angle in writes]
-                self.assertTrue(all(-10 <= angle <= 80 for angle in angles))
+                self.assertTrue(all(0 <= angle <= 90 for angle in angles))
                 changes = [b - a for a, b in zip(angles, angles[1:])]
                 self.assertTrue(all(change * (end - start) >= 0 for change in changes))
                 magnitudes = [abs(change) for change in changes]
@@ -67,29 +67,29 @@ class TimedHandTests(unittest.TestCase):
         hand.hand_up(4)
         self.assertEqual(len(releases), 1)
         self.assertAlmostEqual(releases[0][0], 4.1)
-        self.assertEqual(releases[0][1], 80)
+        self.assertEqual(releases[0][1], 90)
         hand.hand_down(4)
         self.assertEqual(len(releases), 2)
         self.assertAlmostEqual(releases[1][0], 8.2)
-        self.assertEqual(releases[1][1], -10)
+        self.assertEqual(releases[1][1], 0)
 
-    def test_negative_angle_mapping_stays_within_servo_pulse_range(self):
+    def test_synthetic_angle_mapping_stays_within_servo_pulse_range(self):
         gpio = Mock(BCM=11, OUT=0)
         with patch.dict("sys.modules", {"RPi.GPIO": gpio}):
             output = self.module.GPIOServoOutput()
         pwm = gpio.PWM.return_value
-        for angle, duty in ((-10, 7.5), (0, 6.9444444444), (80, 2.5)):
+        for angle, duty in ((0, 7.5), (9, 7.0), (90, 2.5)):
             output.set_angle(angle)
             self.assertAlmostEqual(pwm.ChangeDutyCycle.call_args.args[0], duty)
         pwm.ChangeDutyCycle.reset_mock()
         with patch.object(self.module, "SERVO_DOWN_PULSE_US", None):
             with self.assertRaises(ValueError):
-                output.set_angle(80)
+                output.set_angle(90)
         pwm.ChangeDutyCycle.assert_not_called()
 
-    def test_raising_preserves_the_previous_decreasing_pulse_direction(self):
-        lower = self.module.hand_angle_to_pulse_us(-10)
-        upper = self.module.hand_angle_to_pulse_us(80)
+    def test_synthetic_reversed_calibration_preserves_its_pulse_direction(self):
+        lower = self.module.hand_angle_to_pulse_us(0)
+        upper = self.module.hand_angle_to_pulse_us(90)
         self.assertGreater(lower, upper)
 
 

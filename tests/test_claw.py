@@ -157,11 +157,11 @@ class ClawTests(unittest.TestCase):
             self.assertTrue(all(value == 0 for value in states.values()))
             original_write(angle)
         self.output.set_angle = write
-        self.session(["nang 2", "mo_cang 2.5", "ha 3", "dong_cang",
+        self.session(["nang 90 2", "mo_cang 2.5", "ha 0 3", "dong_cang",
                       "chay", "chay", "thoat"], self.claw(), lift, motor)
-        self.assertEqual(lift_output.angles[0], -10)
-        self.assertIn(80, lift_output.angles)
-        self.assertEqual(lift_output.angles[-1], -10)
+        self.assertEqual(lift_output.angles[0], 0)
+        self.assertIn(90, lift_output.angles)
+        self.assertEqual(lift_output.angles[-1], 0)
         self.assertEqual(self.output.angles[0], 0)
         self.assertIn(100, self.output.angles)
         self.assertEqual(self.output.angles[-1], 0)
@@ -192,7 +192,7 @@ class ClawTests(unittest.TestCase):
             with self.subTest(angle=angle), self.assertRaises(ValueError):
                 claw.set_angle(angle)
         with self.assertRaises(ValueError):
-            lift.set_angle(90)
+            lift.set_angle(100)
         claw_pwm.ChangeDutyCycle.reset_mock()
         lift.close()
         claw_pwm.stop.assert_not_called()
@@ -223,6 +223,8 @@ class ClawTests(unittest.TestCase):
             claw.open()
 
     def test_main_uses_separate_kernel_pwm_providers_and_closes_both(self):
+        from vehicle_testing.tests.servo_double import mock_adafruit_servo
+        mock_adafruit_servo(self)
         main = importlib.import_module("vehicle_testing.cli.robot")
         gpio = Mock(BCM=11, OUT=0)
         hardware = Mock()
@@ -235,7 +237,7 @@ class ClawTests(unittest.TestCase):
                 patch.object(self.module, "validate_claw_pwm_chip"), \
                 patch.object(main, "HandController", side_effect=lambda factory, **kwargs: real_lift(factory, sleeper=lambda _: None, **kwargs)), \
                 patch.object(main, "ClawController", side_effect=lambda factory: real_claw(factory, sleeper=lambda _: None)), \
-                patch("builtins.input", side_effect=["nang 2", "mo_cang", "chay", "thoat"]), \
+                patch("builtins.input", side_effect=["nang 60", "mo_cang", "chay", "thoat"]), \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(main.main([]), 0)
         gpio.PWM.assert_not_called()
