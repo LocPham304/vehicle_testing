@@ -4,6 +4,7 @@
 Inside vehicle_testing on the Pi, with its virtual environment:
     .venv/bin/python -m pip install adafruit-circuitpython-motor rpi-hardware-pwm
     .venv/bin/python tests/test_claw_angle.py --dry-run
+    .venv/bin/python tests/test_claw_angle.py --inspect
     .venv/bin/python tests/test_claw_angle.py --run
 
 This single file can also be copied elsewhere; no project imports are needed.
@@ -15,13 +16,15 @@ then release PWM and exit while the reported full-open fault is investigated:
     thoat          release PWM and exit; Ctrl+C does the same
 
 Both command names set an absolute target in [0, 90], not a relative amount.
-Logical 0 = closed (1611 us), 90 = open (500 us), reusing existing endpoints.
+Proposed test profile: logical 0 = closed (2400 us), 90 = open (1000 us).
+These user-requested endpoints are UNCALIBRATED and not a verified MG90S spec.
 These labels are not measured physical angles; calibrate against the mechanism.
 Prepare the claw closed at logical 0 before starting; otherwise provide its
 KNOWN logical position using --start-angle. Startup emits no position request.
 
 PWM is always released after a movement. The reported full-open fault means
-500/1611 us are NOT confirmed position endpoints; do not repeat hardware tests
+Neither the previous 500/1611 us nor the new 1000/2400 us are measured endpoints;
+do not repeat hardware tests
 until servo type, starting pulse and physical endpoints have been checked.
 After release, the real position is unknown. Do not reuse the requested angle
 as a measured starting position for another movement.
@@ -36,6 +39,8 @@ API: https://docs.circuitpython.org/projects/motor/en/latest/api.html
 
 import argparse
 import math
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -46,8 +51,10 @@ MAX_ANGLE = 90.0
 BCM_PIN = 12
 PWM_CHANNEL = 0
 FREQUENCY_HZ = 50
-CLOSE_PULSE_US = 1611
-OPEN_PULSE_US = 500
+# User-requested experimental profile; not measured on the attached mechanism.
+# The first pulse at the assumed startup position 0 is now 2400 us.
+CLOSE_PULSE_US = 2400
+OPEN_PULSE_US = 1000
 UPDATE_SECONDS = 0.02
 SETTLE_SECONDS = 0.1
 
@@ -98,6 +105,70 @@ def find_claw_chip(root=Path("/sys/class/pwm")):
             "pwm-gpio cua nang/ha. Khong tu dong sua cau hinh boot."
         )
     return matches[0]
+
+
+def inspect_claw(root=Path("/sys/class/pwm"),
+                 boot_config=Path("/boot/firmware/config.txt")):
+    """Read metadata/state and pin mux only; never open or enable PWM."""
+    print("CLAW_DIAG_V1 | CHI DOC - KHONG PHAT XUNG")
+    print(f"File: {Path(__file__).resolve()}")
+    print(f"Anh xa THU NGHIEM, CHUA HIEU CHINH: khep 0 do = {CLOSE_PULSE_US:g} us, "
+          f"mo 90 do = {OPEN_PULSE_US:g} us.")
+    print("Sysfs la trang thai driver, KHONG phai phep do xung/goc that.")
+    result = 0
+    try:
+        selected = find_claw_chip(root)
+        print(f"Driver cang duoc nhan dien: pwmchip{selected}, PWM0.")
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"CAN KIEM TRA DRIVER: {error}")
+        result = 1
+    for chip in sorted(root.glob("pwmchip*")):
+        try:
+            compatible = (chip / "device/of_node/compatible").read_bytes()
+            label = compatible.replace(b"\0", b", ").decode("ascii", errors="replace").strip(", ")
+            channels = (chip / "npwm").read_text(encoding="ascii").strip()
+            print(f"{chip.name}: compatible={label}; npwm={channels}")
+            channel = chip / "pwm0"
+            if not channel.is_dir():
+                print("  pwm0 chua export; khong export trong che do nay.")
+                continue
+            values = {}
+            for name in ("enable", "period", "duty_cycle", "polarity"):
+                path = channel / name
+                if path.exists():
+                    values[name] = path.read_text(encoding="ascii").strip()
+                    print(f"  {name}={values[name]}")
+            period = int(values.get("period", "0"))
+            duty = int(values.get("duty_cycle", "0"))
+            if period > 0:
+                print(f"  Theo driver: {1_000_000_000 / period:g} Hz; "
+                      f"duty_cycle={duty / 1000:g} us (chi co xung neu enable=1).")
+        except (OSError, ValueError) as error:
+            print(f"  Khong doc duoc {chip}: {error}")
+            result = 1
+    print("Boot config luu tren dia (co the khac cau hinh dang chay):")
+    try:
+        for number, line in enumerate(boot_config.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if not stripped.startswith("#") and ("pwm" in stripped or "audio=" in stripped):
+                print(f"  {number}: {stripped}")
+    except OSError as error:
+        print(f"  Khong doc duoc {boot_config}: {error}")
+    pinctrl = shutil.which("pinctrl")
+    if pinctrl is None:
+        print("Khong co pinctrl; chua xac dinh duoc chuc nang GPIO12/GPIO18.")
+    else:
+        for pin in (12, 18):
+            try:
+                state = subprocess.run([pinctrl, "get", str(pin)], capture_output=True,
+                                       text=True, timeout=3, check=False)
+                print(f"pinctrl get {pin}: {(state.stdout or state.stderr).strip()}")
+                if state.returncode:
+                    result = 1
+            except (OSError, subprocess.TimeoutExpired) as error:
+                print(f"Khong doc duoc GPIO{pin}: {error}")
+                result = 1
+    return result
 
 
 class KernelPWMAdapter:
@@ -212,11 +283,15 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--run", action="store_true", help="Phat PWM that tren BCM 12")
     mode.add_argument("--dry-run", action="store_true", help="Mo phong (mac dinh)")
+    mode.add_argument("--inspect", action="store_true",
+                      help="Chi doc driver, trang thai PWM, pin mux; khong phat xung")
     parser.add_argument("--start-angle", default=0, type=float, help="Goc hien tai gia dinh, 0..90")
     parser.add_argument("--seconds", default=2, type=float, help="Thoi gian moi lenh, 0.2..60")
     parser.add_argument("--release-after-move", action="store_true",
                         help="Tuong thich lenh cu; hien luon nha PWM sau moi lenh")
     args = parser.parse_args(argv)
+    if args.inspect:
+        return inspect_claw()
     try:
         number_in_range(args.seconds, 0.2, 60, "Thoi gian")
         claw = ClawExperiment(args.start_angle, dry_run=not args.run)
