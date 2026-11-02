@@ -1,115 +1,116 @@
-# Wi-Fi qua WebSocket `/stem`
+# Pi làm WebSocket server để FE tìm xe
 
-Receiver mới: `connections/wifi/websocket_receiver.py`.
-Lệnh chạy: `wifi_websocket_receiver.py`. Luồng này thay đường UDP trong lần thử
-FE hiện tại; adapter UDP cũ được giữ để đối chiếu, không được mở bởi listener này.
-
-## Vị trí các thành phần
+Triển khai: `connections/wifi/websocket_receiver.py`.
+Lệnh chạy: `wifi_websocket_receiver.py`.
 
 ```text
-FE trên laptop ---- WebSocket ----> server 192.168.1.93:5000/stem
-                                       |
-                                       | chuyển tiếp tin nhắn FE
-                                       v
-Pi chạy wifi_websocket_receiver.py (cũng là WebSocket client)
+Pi khởi động -> mở server 0.0.0.0:5000
+FE dò IP trong LAN -> kết nối ws://<IP_PI>:5000/stem
+FE gửi identify -> Pi trả UUID và tên -> FE hiển thị xe
+FE chọn xe -> UPLOAD -> EXEC -> Pi trả kết quả
 ```
 
-`ws.send(payload)` của FE gửi tới server. Server phải relay/broadcast tới kết
-nối Pi; hai client cùng URL chưa tự chuyển tin cho nhau. Bản listener không sửa
-server/FE và không tự đặt gói đăng ký robot khi chưa có hợp đồng phía server.
-Đây là WebSocket thường; chưa có bằng chứng endpoint dùng Socket.IO hay STOMP.
+Pi là server, FE là client. Không có bước Pi kết nối tới IP máy FE hay server
+trung gian relay. Phiên bản client cũ (`--url`, `--once`, `--reconnect-seconds`)
+đã được thay bằng server; các cờ đó không còn dùng.
 
-## Chạy thử trên Pi
+## Test kết nối trước
+
+Cập nhật source và dependency mới `websockets` trong venv Pi:
 
 ```bash
 cd ~/vehicle_testing
 source .venv/bin/activate
 python -m pip install -r requirements-wifi.txt
-python wifi_websocket_receiver.py --device-id robot-003 --dry-run
+python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
 ```
 
-Đổi địa chỉ nếu cần:
+Không có `--run`: đây là chế độ preview, không mở GPIO/I²C hoặc làm xe chạy.
+Log khởi động phải có `WS SERVER LISTENING: 0.0.0.0:5000/stem`.
+Xem IP LAN thực tế của Pi trong terminal khác:
 
 ```bash
-python wifi_websocket_receiver.py --device-id robot-003 --url ws://192.168.1.93:5000/stem
+hostname -I
 ```
 
-Listener tự kết nối lại sau 2 giây khi socket đóng/lỗi; không gửi lại lệnh.
-`--once` chỉ thử một lần. Ctrl+C đóng socket và dọn worker đang chạy.
-Mất kết nối yêu cầu dừng và xóa bản chờ; cần upload lại sau khi nối lại.
+Ví dụ Pi có IP `192.168.1.40`, FE phải kết nối `ws://192.168.1.40:5000/stem`.
+`0.0.0.0` là địa chỉ bind trên Pi, không phải địa chỉ đích trên FE. Không dùng IP
+máy chạy FE nếu máy đó không phải Pi. FE vẫn cần triển khai quét IP LAN hoặc
+cho nhập IP Pi; mở server trên Pi không tự sửa thuật toán discovery của FE.
 
-Các chế độ giống receiver khác:
-
-- Không có cờ: chỉ parse/preview, EXEC không mở phần cứng.
-- `--dry-run`: EXEC chạy qua runner mô phỏng, không mở GPIO/I²C.
-- `--run`: EXEC điều khiển motor/LED thật theo tập lệnh runner hiện hỗ trợ.
-
-Sau khi kiểm tra mô phỏng và dừng receiver khác, chạy thật:
-
-```bash
-python wifi_websocket_receiver.py --device-id robot-003 --run
-```
-
-## Hợp đồng đã có từ FE
-
-FE gửi JSON text, ví dụ JavaScript:
+Có thể test trong Console trình duyệt FE, thay IP bằng IP Pi:
 
 ```javascript
-const payload = JSON.stringify({
-  type: "UPLOAD",
-  uuid: "robot-003",
-  code: 'report_block("block-1")\nrobot.sendCmd("move_forward:5")\n'
-});
-ws.send(payload); // sau khi socket đã mở
+const probe = new WebSocket("ws://192.168.1.40:5000/stem");
+probe.onmessage = event => console.log("Pi:", JSON.parse(event.data));
+probe.onerror = event => console.error("Pi connection error:", event);
+probe.onopen = () => probe.send(JSON.stringify({type: "identify"}));
+// Sau khi quan sát kết quả: probe.close();
 ```
 
-Một WebSocket message chứa một JSON object, không cần thêm dấu xuống dòng ngoài
-JSON như giao thức USB. `code` giữ nguyên chuỗi Scratch, không bị eval/exec.
-Listener lọc UUID khớp hoàn toàn, parse bằng `runtime/parser.py`, rồi in preview.
-Upload không tự chạy. Upload sai code xóa preview cũ của cùng xe.
+Pi cho phép WebSocket trên `/stem` và `/` (phục vụ discovery), gồm cả query
+string. Đường dẫn khác trả HTTP 404 trong handshake. Server dùng IPv4, cùng
+LAN có đường truyền tới Pi và cổng TCP 5000 phải truy cập được. Nếu không kết
+nối được, kiểm tra IP Pi, firewall/cô lập client Wi-Fi và cổng đang bị chiếm.
 
-Payload khi bấm Chạy đã được xác nhận từ ảnh console FE:
+## Identify
+
+Hỗ trợ chuỗi text `identify`, hoặc JSON `{"type":"identify"}`,
+`{"type":"IDENTIFY"}`, `{"action":"identify"}`. Identify không cần biết UUID trước.
+
+Phản hồi đề xuất cho FE:
 
 ```json
-{"type":"EXEC","uuid":"robot-003","code":""}
+{"type":"IDENTIFY","uuid":"robot-003","name":"Robot Gamma"}
 ```
 
-Chỉ `EXEC` đúng UUID, `code` rỗng và có upload hợp lệ mới chuyển sang runner.
-Mỗi upload cho phép một EXEC; chạy lại cần upload lại. Upload mới trong khi đang
-chạy bị từ chối; worker dùng snapshot của lần upload đã nhận. Parser chỉ hỗ trợ
-tiến/lùi, quay trái/phải và LED ma trận hiện có, không thực thi Python tùy ý.
+Tên tùy chỉnh bằng `--name`; mặc định `Robot <UUID>`. UUID lấy từ `--device-id`,
+ổn định giữa các lần chạy nếu giữ nguyên cờ. Nhiều kết nối dò xe có thể nhận
+identity cùng lúc; chúng không giành quyền điều khiển hoặc xóa kịch bản khi đóng.
+Chưa xác minh bộ discovery của FE đang yêu cầu type/field phản hồi cụ thể nào;
+đây là schema được ghi rõ để FE kiểm tra, không khẳng định UI đã tương thích.
 
-Giới hạn JSON text 512 KiB; parser giữ giới hạn source 64 KiB/1000 sự kiện.
-Log raw tối đa 4096 ký tự đầu mỗi message; ký tự điều khiển được escape.
-Raw log có thể gồm tin của xe khác nếu server broadcast; chỉ preview đúng UUID.
+## Giữ luồng UPLOAD/EXEC đã xác nhận
 
-## Xác minh FE có gửi tới Pi
+FE gửi một JSON object trong mỗi WebSocket message:
 
-1. Chờ `WS CONNECTED` trên Pi.
-2. Bấm Upload trên FE. Pi phải in `WS RX` và `WS UPLOAD UUID=robot-003`.
-3. Bấm Chạy trên FE. Pi phải in `WS RX` có `type:"EXEC"`, rồi `WS EXEC`.
-4. Với `--dry-run`/`--run`, log có các sự kiện `executing`, block và `done`/`stopped`/`error`.
+```javascript
+ws.send(JSON.stringify({
+  type: "UPLOAD", uuid: "robot-003",
+  code: 'report_block("block-1")\nrobot.sendCmd("move_forward:5")\n'
+}));
+ws.send(JSON.stringify({type: "EXEC", uuid: "robot-003", code: ""}));
+```
 
-`Da gui payload JSON (44 byte)`/`Code executed successfully` ở FE mới xác nhận
-thao tác gửi phía FE. Số byte không xác định được các field hay type của gói.
-Phải thấy message ở Pi mới xác nhận được server đã relay xuống Pi.
+UPLOAD và EXEC phải cùng kết nối, đúng UUID. Upload chỉ kiểm tra/lưu chờ, không
+tự chạy; mỗi Upload hợp lệ cho phép một EXEC. Parser không eval/exec Python tùy
+ý, hiện hỗ trợ tiến/lùi, quay và LED. Chưa có bộ đọc XML Blockly trực tiếp.
 
-Nếu chỉ có CONNECTED mà không có RX, kiểm tra server có forward tin FE cho các
-client khác, có cần đăng ký UUID/role hoặc room trước khi nhận không. Chưa có
-source server `/stem` trong checkout đang kiểm tra nên chưa xác minh các bước này.
+Server trả kết quả JSON trên kết nối đã gửi, ví dụ:
 
-Nếu có WS RX nhưng không có preview, kiểm tra `uuid`, `type` chính xác là
-`UPLOAD` và `code` có thuộc tập lệnh parser hỗ trợ không.
+```json
+{"ok":true,"status":"uploaded","commands":1,"markers":1}
+```
 
-## Phần chưa có hợp đồng phía server/FE
+EXEC trả `status:"preview"` ở chế độ mặc định, hoặc `status:"accepted"` khi đã
+bật runner. `accepted` chưa có nghĩa xe đã chạy xong. Các block/trạng thái hoàn
+tất hiện ghi ở Pi; chưa thống nhất protocol sự kiện hoàn tất/Dừng với FE.
 
-- JSON khi bấm Dừng; hiện type khác UPLOAD/EXEC chỉ được ghi log.
-- Hợp đồng đăng ký/định tuyến UUID nếu server yêu cầu.
-- Hợp đồng ACK/trạng thái/block gửi ngược lại FE.
+Một kết nối Upload giữ quyền điều khiển tới khi nó ngắt; kết nối khác vẫn có
+thể Identify nhưng không thay code/chạy xe. Ngắt kết nối điều khiển xóa bản chờ
+và hủy worker. Kết nối mới cần Upload lại. Ctrl+C dừng server và dọn worker.
 
-Không suy đoán các type khác từ tên log hoặc độ dài payload. Trạng thái/block
-chỉ ghi log tại Pi, chưa gửi ACK tự đặt tới server. Các phương thức
-MQTT/USB/Bluetooth và HTTP cũ giữ nguyên. Server thật và phần cứng cần được thử
-tại mạng của người dùng; kiểm thử mô phỏng không chứng minh server đã relay.
+## Mô phỏng và chạy thật sau khi test kết nối
 
-Thư viện: [websocket-client WebSocketApp](https://websocket-client.readthedocs.io/en/latest/app.html).
+```bash
+python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma" --dry-run
+```
+
+`--dry-run` đi qua runner mô phỏng khi nhận EXEC, không mở phần cứng. Chỉ khi
+muốn điều khiển motor/LED thật mới dùng `--run`, dừng các receiver khác trước.
+Tùy chỉnh bind bằng `--host`, `--port`; mặc định `0.0.0.0`, `5000`.
+
+Giới hạn WebSocket message 512 KiB, source 64 KiB/1000 sự kiện theo parser.
+Các adapter MQTT/USB/Bluetooth/HTTP/UDP không bị thay đổi bởi server này.
+
+Thư viện: [websockets 15 server](https://websockets.readthedocs.io/en/15.0.1/reference/sync/server.html).

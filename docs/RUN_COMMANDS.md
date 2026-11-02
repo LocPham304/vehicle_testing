@@ -89,15 +89,16 @@ Trên Pi:
 
 ```bash
 python -m pip install -r requirements-wifi.txt
-python wifi_websocket_receiver.py --device-id robot-003 --dry-run
+python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
 ```
 
-Mặc định kết nối `ws://192.168.1.93:5000/stem`; có thể đổi bằng `--url`.
-Trên FE chọn Wi-Fi, Upload Code rồi Chạy Code; xem `WS RX` trên Pi.
+Pi mở server `0.0.0.0:5000`, không kết nối tới máy FE. Xem IP bằng `hostname -I`;
+FE kết nối `ws://<IP_PI>:5000/stem`, gửi `identify` để lấy UUID/tên robot.
+Lệnh trên chỉ preview, phù hợp test kết nối, không làm xe chạy.
 `--dry-run` mô phỏng khi nhận `EXEC`; đổi sang `--run` để chạy motor/LED thật.
 Không có cờ chỉ preview. Upload không tự chạy; cần gói `EXEC` riêng, mỗi upload
-chỉ chạy một lần. Ngắt kết nối xóa bản chờ/yêu cầu dừng. Phản hồi trạng thái
-hiện ghi tại Pi; chưa xác nhận hợp đồng gửi ngược về FE. Xem [WebSocket](WIFI_WEBSOCKET.md).
+chỉ chạy một lần. Ngắt kết nối điều khiển xóa bản chờ/yêu cầu dừng; các kết nối
+dò xe độc lập. Xem [WebSocket](WIFI_WEBSOCKET.md) về identify và ACK.
 
 ### UDP broadcast cũ — không phải WebSocket
 

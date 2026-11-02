@@ -3,9 +3,12 @@
 from contextlib import redirect_stdout
 from io import StringIO
 import json
-from unittest import TestCase
+import os
+from unittest import TestCase, skipUnless
 from unittest.mock import Mock, patch
-from threading import Event
+from threading import Event, Thread
+from types import SimpleNamespace
+from http import HTTPStatus
 
 from vehicle_testing.connections.wifi import websocket_receiver as ws
 
@@ -147,77 +150,207 @@ class WebSocketReceiverTests(TestCase):
                 ws.WebSocketReceiver(device_id)
 
 
-class WebSocketCliTests(TestCase):
-    def test_default_endpoint_callbacks_and_cleanup(self):
-        library = Mock()
-        with patch.object(ws, "load_websocket", return_value=library), redirect_stdout(StringIO()):
-            result = ws.main(["--device-id", "robot-003", "--once"])
-        self.assertEqual(result, 0)
-        call = library.WebSocketApp.call_args
-        self.assertEqual(call.args, ("ws://192.168.1.93:5000/stem",))
-        self.assertTrue(all(callable(call.kwargs[name]) for name in ("on_open", "on_message", "on_error", "on_close")))
-        library.WebSocketApp.return_value.run_forever.assert_called_once()
-        library.WebSocketApp.return_value.close.assert_called_once()
+class FakeConnection:
+    def __init__(self, messages=()):
+        self.messages = iter(messages)
+        self.sent = []
+        self.closed = False
 
-    def test_invalid_endpoint_rejected_before_import_or_connection(self):
-        for url in ("http://example.com/stem", "ws://", "ws://host:invalid/stem", "ws://host/stem#fragment"):
-            with self.subTest(url=url), patch.object(ws, "load_websocket") as loader, \
+    def __iter__(self):
+        return self.messages
+
+    def send(self, data):
+        self.sent.append(json.loads(data))
+
+    def close(self, **kwargs):
+        self.closed = True
+
+
+class WebSocketServerTests(TestCase):
+    def setUp(self):
+        self.server = ws.RobotWebSocketServer("robot-003", name="Robot Gamma")
+        self.addCleanup(self.server.close)
+
+    def test_identify_text_and_json_return_uuid_name_without_touching_hardware(self):
+        for message in ("identify", '{"type":"identify"}', '{"type":"IDENTIFY"}', '{"action":"identify"}'):
+            with self.subTest(message=message):
+                connection = FakeConnection([message])
+                self.server.handle_connection(connection)
+                self.assertEqual(connection.sent, [{"type": "IDENTIFY", "uuid": "robot-003", "name": "Robot Gamma"}])
+                self.assertIsNone(self.server.owner)
+                self.assertIsNone(self.server.receiver.current_program)
+
+    def test_discovery_socket_cannot_clear_another_socket_upload(self):
+        probe = FakeConnection(['{"type":"identify"}'])
+
+        def messages():
+            yield json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE})
+            self.server.handle_connection(probe)
+            yield '{"type":"EXEC","uuid":"robot-003","code":""}'
+
+        owner = FakeConnection(messages())
+        self.server.handle_connection(owner)
+        self.assertEqual([reply["status"] for reply in owner.sent], ["uploaded", "preview"])
+        self.assertEqual(probe.sent[0]["uuid"], "robot-003")
+
+    def test_other_client_cannot_replace_or_execute_current_upload(self):
+        other = FakeConnection([json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE}),
+                                '{"type":"EXEC","uuid":"robot-003","code":""}'])
+
+        def messages():
+            yield json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE})
+            self.server.handle_connection(other)
+            yield '{"type":"EXEC","uuid":"robot-003","code":""}'
+
+        owner = FakeConnection(messages())
+        self.server.handle_connection(owner)
+        self.assertTrue(all(not reply["ok"] for reply in other.sent))
+        self.assertEqual(owner.sent[-1]["status"], "preview")
+
+    def test_disconnect_clears_upload_before_another_client_exec(self):
+        owner = FakeConnection([json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE})])
+        self.server.handle_connection(owner)
+        other = FakeConnection(['{"type":"EXEC","uuid":"robot-003","code":""}'])
+        self.server.handle_connection(other)
+        self.assertFalse(other.sent[-1]["ok"])
+        self.assertIsNone(self.server.receiver.current_program)
+
+    def test_wrong_uuid_does_not_claim_control_and_bad_json_returns_error(self):
+        connection = FakeConnection(['{"type":"UPLOAD","uuid":"robot-004","code":"bad"}', "invalid", "[]", b"binary"])
+        self.server.handle_connection(connection)
+        self.assertIsNone(self.server.owner)
+        self.assertEqual(len(connection.sent), 3)
+        self.assertTrue(all(not reply["ok"] for reply in connection.sent))
+
+    def test_websocket_paths_allow_stem_and_root_discovery(self):
+        connection = Mock()
+        for path in ("/stem", "/stem?probe=1", "/"):
+            self.assertIsNone(self.server.process_request(connection, SimpleNamespace(path=path)))
+        self.server.process_request(connection, SimpleNamespace(path="/other"))
+        self.assertEqual(connection.respond.call_args.args[0], HTTPStatus.NOT_FOUND)
+
+    def test_shutdown_closes_connected_clients(self):
+        connection = FakeConnection()
+
+        def messages():
+            self.server.close()
+            yield "identify"
+
+        connection.messages = messages()
+        self.server.handle_connection(connection)
+        self.assertTrue(connection.closed)
+
+
+class WebSocketCliTests(TestCase):
+    def server_library(self):
+        library = Mock()
+        library.serve.return_value.__enter__ = Mock(return_value=library.serve.return_value)
+        library.serve.return_value.__exit__ = Mock(return_value=False)
+        return library
+
+    def test_default_is_a_server_bound_to_all_pi_interfaces(self):
+        library = self.server_library()
+        with patch.object(ws, "load_websocket_server", return_value=library), redirect_stdout(StringIO()):
+            self.assertEqual(ws.main(["--device-id", "robot-003", "--name", "Robot Gamma"]), 0)
+        call = library.serve.call_args
+        self.assertEqual(call.args[1:], ("0.0.0.0", 5000))
+        self.assertIsNone(call.args[0].__self__.receiver.session.executor)
+        self.assertEqual(call.kwargs["max_size"], ws.MAX_MESSAGE_BYTES)
+        library.serve.return_value.serve_forever.assert_called_once()
+
+    def test_invalid_options_rejected_before_loading_library(self):
+        for flags in (["--port", "0"], ["--port", "65536"], ["--device-id", "bad/id"], ["--name", " "]):
+            with self.subTest(flags=flags), patch.object(ws, "load_websocket_server") as loader, \
                     patch("sys.stderr", new=StringIO()), self.assertRaises(SystemExit):
-                ws.main(["--device-id", "robot-003", "--url", url, "--once"])
+                ws.main(["--device-id", "robot-003", *flags])
             loader.assert_not_called()
 
-    def test_interrupt_closes_socket_and_returns_130(self):
-        library = Mock()
-        library.WebSocketApp.return_value.run_forever.side_effect = KeyboardInterrupt
-        with patch.object(ws, "load_websocket", return_value=library), redirect_stdout(StringIO()):
-            self.assertEqual(ws.main(["--device-id", "robot-003", "--once"]), 130)
-        library.WebSocketApp.return_value.close.assert_called_once()
-
-    def test_interrupt_swallowed_by_websocket_19_does_not_reconnect(self):
-        library = Mock()
-
-        def swallow_interrupt(**kwargs):
-            callbacks = library.WebSocketApp.call_args.kwargs
-            callbacks["on_error"](library.WebSocketApp.return_value, KeyboardInterrupt())
-            callbacks["on_close"](library.WebSocketApp.return_value, None, None)
-            return False  # websocket-client 1.9 can return instead of propagating Ctrl+C.
-
-        library.WebSocketApp.return_value.run_forever.side_effect = swallow_interrupt
-        with patch.object(ws, "load_websocket", return_value=library), \
-                patch.object(ws, "Event") as retry, redirect_stdout(StringIO()):
-            retry.return_value.wait.side_effect = AssertionError("Ctrl+C must exit before reconnect")
+    def test_interrupt_stops_server_without_reconnect(self):
+        library = self.server_library()
+        library.serve.return_value.serve_forever.side_effect = KeyboardInterrupt
+        with patch.object(ws, "load_websocket_server", return_value=library), redirect_stdout(StringIO()):
             self.assertEqual(ws.main(["--device-id", "robot-003"]), 130)
-        retry.return_value.wait.assert_not_called()
-        self.assertEqual(library.WebSocketApp.call_count, 1)
-        library.WebSocketApp.return_value.close.assert_called_once()
+        self.assertEqual(library.serve.call_count, 1)
+        self.assertTrue(library.serve.call_args.args[0].__self__._closed)
 
-    def test_missing_dependency_reports_install_command(self):
-        with patch.object(ws, "load_websocket", side_effect=RuntimeError("requirements-wifi.txt")), \
-                redirect_stdout(StringIO()):
-            self.assertEqual(ws.main(["--device-id", "robot-003", "--once"]), 1)
+    def test_missing_dependency_or_port_busy_returns_clear_error(self):
+        with patch.object(ws, "load_websocket_server", side_effect=RuntimeError("requirements-wifi.txt")), redirect_stdout(StringIO()):
+            self.assertEqual(ws.main(["--device-id", "robot-003"]), 1)
+        library = self.server_library()
+        library.serve.side_effect = OSError("port busy")
+        with patch.object(ws, "load_websocket_server", return_value=library), redirect_stdout(StringIO()):
+            self.assertEqual(ws.main(["--device-id", "robot-003"]), 1)
 
-    def test_dry_run_executes_fe_script_through_the_shared_runner(self):
-        library = Mock()
-
-        def serve(**kwargs):
-            callbacks = library.WebSocketApp.call_args.kwargs
-            connection = library.WebSocketApp.return_value
-            callbacks["on_open"](connection)
-            callbacks["on_message"](connection, json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE}))
-            self.assertEqual(callbacks["on_message"](connection, '{"type":"EXEC","uuid":"robot-003","code":""}')["status"], "accepted")
-            callbacks["on_message"].__self__.session.wait(1)
-
-        library.WebSocketApp.return_value.run_forever.side_effect = serve
-        with patch.object(ws, "load_websocket", return_value=library), \
+    def test_dry_run_still_executes_confirmed_fe_payload_via_shared_runner(self):
+        library = self.server_library()
+        def serve():
+            connection = FakeConnection(["identify", json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE}),
+                                         '{"type":"EXEC","uuid":"robot-003","code":""}'])
+            handler = library.serve.call_args.args[0]
+            original_send = connection.send
+            def send(data):
+                original_send(data)
+                if connection.sent[-1].get("status") == "accepted":
+                    handler.__self__.receiver.session.wait(1)
+            connection.send = send
+            handler(connection)
+            self.assertEqual(connection.sent[0]["uuid"], "robot-003")
+        library.serve.return_value.serve_forever.side_effect = serve
+        with patch.object(ws, "load_websocket_server", return_value=library), \
                 self.assertLogs("vehicle_testing.runtime.runner", level="INFO") as logs, redirect_stdout(StringIO()):
-            self.assertEqual(ws.main(["--device-id", "robot-003", "--dry-run", "--once"]), 0)
+            self.assertEqual(ws.main(["--device-id", "robot-003", "--dry-run"]), 0)
         self.assertIn("move_forward:5", "\n".join(logs.output))
 
-    def test_real_mode_selects_real_runner_only_with_run_flag(self):
-        library = Mock()
-        with patch.object(ws, "load_websocket", return_value=library), \
-                patch.object(ws, "WebSocketReceiver") as receiver, redirect_stdout(StringIO()):
-            receiver.return_value.had_error = False
-            receiver.return_value.interrupted = False
-            self.assertEqual(ws.main(["--device-id", "robot-003", "--run", "--once"]), 0)
-        self.assertFalse(receiver.call_args.kwargs["executor"].keywords["dry_run"])
+
+@skipUnless(os.environ.get("RUN_WEBSOCKET_INTEGRATION") == "1",
+            "Set RUN_WEBSOCKET_INTEGRATION=1 with websockets installed for loopback checks")
+class WebSocketLoopbackTests(TestCase):
+    def setUp(self):
+        from websockets.sync.server import serve
+        from websockets.sync.client import connect
+        self.connect = connect
+        self.controller = ws.RobotWebSocketServer("robot-003", name="Robot Gamma")
+        self.server = serve(self.controller.handle_connection, "127.0.0.1", 0,
+                            process_request=self.controller.process_request,
+                            max_size=ws.MAX_MESSAGE_BYTES, close_timeout=1)
+        self.uri = f"ws://127.0.0.1:{self.server.socket.getsockname()[1]}/stem"
+        self.thread = Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.stop)
+
+    def stop(self):
+        try:
+            self.controller.close()
+        finally:
+            self.server.shutdown()
+            self.thread.join(2)
+
+    def open(self, uri=None):
+        return self.connect(uri or self.uri, proxy=None, open_timeout=2, close_timeout=1)
+
+    def test_real_identify_frames_on_stem_and_root(self):
+        for uri in (self.uri, self.uri.removesuffix("stem")):
+            with self.subTest(uri=uri), self.open(uri) as client:
+                for message in ("identify", '{"type":"identify"}'):
+                    client.send(message)
+                    self.assertEqual(json.loads(client.recv(timeout=2)),
+                                     {"type": "IDENTIFY", "uuid": "robot-003", "name": "Robot Gamma"})
+
+    def test_real_upload_exec_and_discovery_on_separate_connections(self):
+        with self.open() as client:
+            client.send(json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE}))
+            self.assertEqual(json.loads(client.recv(timeout=2))["status"], "uploaded")
+            with self.open() as probe:
+                probe.send("identify")
+                self.assertEqual(json.loads(probe.recv(timeout=2))["uuid"], "robot-003")
+            client.send('{"type":"EXEC","uuid":"robot-003","code":""}')
+            self.assertEqual(json.loads(client.recv(timeout=2))["status"], "preview")
+            client.send('{"type":"EXEC","uuid":"robot-003","code":""}')
+            self.assertFalse(json.loads(client.recv(timeout=2))["ok"])
+
+    def test_real_handshake_rejects_unknown_path(self):
+        from websockets.exceptions import InvalidStatus
+        with self.assertRaises(InvalidStatus) as error:
+            with self.open(self.uri.replace("/stem", "/wrong")):
+                self.fail("Wrong endpoint must not complete the WebSocket handshake")
+        self.assertEqual(error.exception.response.status_code, 404)

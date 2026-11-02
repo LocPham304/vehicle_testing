@@ -43,7 +43,7 @@ vehicle_testing/
 │   ├── wifi/
 │   │   ├── receiver.py          # HTTP trực tiếp trên Pi
 │   │   ├── client.py            # HTTP client trên laptop
-│   │   ├── websocket_receiver.py # Nhận JSON UPLOAD/EXEC qua /stem
+│   │   ├── websocket_receiver.py # Pi server /stem: identify, UPLOAD/EXEC
 │   │   └── udp_receiver.py      # Luồng UDP cũ UUID + LF + code/EXEC
 │   └── bluetooth/
 │       ├── receiver.py          # Phiên Bluetooth Classic SPP trên Pi
@@ -120,25 +120,28 @@ thời các receiver USB, MQTT, Wi-Fi, Bluetooth ở chế độ điều khiển
 
 ## Nhận Wi-Fi WebSocket từ FE/BE
 
-Luồng Wi-Fi mới kết nối tới `ws://192.168.1.93:5000/stem`. Trên Pi:
+Pi là WebSocket server, FE kết nối trực tiếp tới `ws://<IP_PI>:5000/stem`. Trên Pi:
 
 ```sh
 cd ~/vehicle_testing
 source .venv/bin/activate
 python -m pip install -r requirements-wifi.txt
-python wifi_websocket_receiver.py --device-id robot-003 --dry-run
+python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
 ```
 
-Trên FE chọn Wi-Fi rồi Upload/Chạy. Theo dõi `WS CONNECTED` và `WS RX` trên Pi.
-Pi và FE là hai client của server `/stem`; server phải chuyển tiếp payload từ
-FE sang Pi. Kết nối thành công chưa chứng minh server đã chuyển tiếp dữ liệu.
+Mặc định Pi lắng nghe `0.0.0.0:5000`, không kết nối ra máy FE. Xem IP Pi bằng
+`hostname -I`. FE dò IP trong LAN rồi gửi `identify` hoặc `{"type":"identify"}`;
+Pi trả `{"type":"IDENTIFY","uuid":"robot-003","name":"Robot Gamma"}`.
+Server nhận `/stem` và `/` để hỗ trợ bước dò xe. Không nhập `0.0.0.0` làm IP đích
+trên FE; dùng IP LAN của Pi. Việc quét dải IP và hiển thị danh sách vẫn thuộc FE.
 
 Nhận JSON `{"type":"UPLOAD","uuid":"robot-003","code":"..."}`, sau đó
 `{"type":"EXEC","uuid":"robot-003","code":""}` đúng payload FE đã cung cấp.
 Upload không tự chạy; mỗi upload chỉ chạy một lần. `--dry-run` mô phỏng,
 `--run` điều khiển motor/LED thật; không có cờ là chỉ preview.
-Ngắt kết nối xóa bản chờ và yêu cầu dừng. Type khác chỉ ghi log; chưa có hợp
-đồng đăng ký robot/STOP/phản hồi về FE. Xem [hướng dẫn WebSocket](docs/WIFI_WEBSOCKET.md).
+Ngắt kết nối điều khiển xóa bản chờ và yêu cầu dừng; ngắt kết nối dò xe không
+ảnh hưởng xe đang điều khiển. Một kết nối giữ quyền điều khiển; server trả kết
+quả `ok`/`status` cho Upload/Exec. Xem [hướng dẫn WebSocket](docs/WIFI_WEBSOCKET.md).
 
 ### Wi-Fi UDP cũ — giữ để đối chiếu
 

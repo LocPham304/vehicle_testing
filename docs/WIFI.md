@@ -1,7 +1,7 @@
 # Điều khiển qua Wi-Fi bằng HTTP trực tiếp
 
-Nếu FE dùng `ws://192.168.1.93:5000/stem`, dùng
-[listener WebSocket](WIFI_WEBSOCKET.md). Luồng broadcast cũ (`UUID\ncode`,
+Nếu FE kết nối `ws://<IP_PI>:5000/stem`, dùng
+[Pi WebSocket server](WIFI_WEBSOCKET.md). Luồng broadcast cũ (`UUID\ncode`,
 `UUID\nEXEC` tại UDP 50000) có [receiver UDP](WIFI_UDP.md) riêng.
 Tài liệu bên dưới dành riêng cho công cụ HTTP.
 
