@@ -92,8 +92,10 @@ python -m pip install -r requirements-wifi.txt
 python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
 ```
 
-Pi mở server `0.0.0.0:5000`, không kết nối tới máy FE. Xem IP bằng `hostname -I`;
-FE kết nối `ws://<IP_PI>:5000/stem`, gửi `identify` để lấy UUID/tên robot.
+Pi mở server `0.0.0.0:50000`, không kết nối tới máy FE. Xem IP bằng `hostname -I`.
+FE nhờ Windows Local Helper dò TCP 50000; Helper kết nối
+`ws://<IP_PI>:50000/stem`, gửi `{"action":"identify"}` và nhận
+`{"action":"identify_response","uuid":"robot-003","deviceName":"Robot Gamma"}`.
 Lệnh trên chỉ preview, phù hợp test kết nối, không làm xe chạy.
 `--dry-run` mô phỏng khi nhận `EXEC`; đổi sang `--run` để chạy motor/LED thật.
 Không có cờ chỉ preview. Upload không tự chạy; cần gói `EXEC` riêng, mỗi upload

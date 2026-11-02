@@ -1,7 +1,7 @@
-"""Pi WebSocket server: FE connects directly to ws://<PI_IP>:5000/stem.
+"""Pi WebSocket server: Windows Local Helper connects to ws://<PI_IP>:50000/stem.
 
-Listen on 0.0.0.0:5000. Answer identify with UUID/name so FE discovery can
-recognize this robot. Preview by default; --dry-run simulates UPLOAD/EXEC;
+Listen on 0.0.0.0:50000. Answer action=identify with identify_response, UUID
+and deviceName for LAN discovery. Preview by default; --dry-run simulates UPLOAD/EXEC;
 --run enables the shared hardware runner. Discovery never claims control.
 """
 
@@ -22,7 +22,7 @@ from vehicle_testing.runtime.session import RobotSession
 
 logger = logging.getLogger(__name__)
 DEFAULT_HOST = "0.0.0.0"
-DEFAULT_PORT = 5000
+DEFAULT_PORT = 50000
 MAX_MESSAGE_BYTES = 512 * 1024
 MAX_LOG_CHARS = 4096
 
@@ -193,7 +193,7 @@ class RobotWebSocketServer:
                 return {"ok": False, "error": "Server dang dong."}
             if isinstance(kind, str) and kind.lower() == "identify":
                 logger.info("WS IDENTIFY: UUID=%s, name=%r.", self.device_id, self.name)
-                return {"type": "IDENTIFY", "uuid": self.device_id, "name": self.name}
+                return {"action": "identify_response", "uuid": self.device_id, "deviceName": self.name}
             if payload.get("uuid") != self.device_id:
                 return None
             if self.owner is None:
@@ -282,7 +282,8 @@ def main(argv=None):
                 compression=None) as server:
             logger.info("WS SERVER LISTENING: %s:%d/stem | UUID=%s | name=%r | mode=%s.",
                         args.host, args.port, args.device_id, controller.name, controller.receiver.mode)
-            logger.info("FE ket noi ws://<IP_PI>:%d/stem; xem IP Pi bang hostname -I. Ctrl+C de dung.", args.port)
+            logger.info("Windows Local Helper ket noi ws://<IP_PI>:%d/stem, gui action=identify; "
+                        "xem IP Pi bang hostname -I. Ctrl+C de dung.", args.port)
             try:
                 server.serve_forever()
             finally:

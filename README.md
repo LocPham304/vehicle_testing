@@ -118,9 +118,10 @@ bằng cách thay `--dry-run` trên Pi thành `--run`. Giữ công cụ gửi m�
 mất tin hợp lệ trong 5 giây sẽ yêu cầu dừng và xóa kịch bản chờ. Không chạy đồng
 thời các receiver USB, MQTT, Wi-Fi, Bluetooth ở chế độ điều khiển phần cứng.
 
-## Nhận Wi-Fi WebSocket từ FE/BE
+## Wi-Fi WebSocket: FE → Windows Local Helper → Pi
 
-Pi là WebSocket server, FE kết nối trực tiếp tới `ws://<IP_PI>:5000/stem`. Trên Pi:
+Pi mở WebSocket server tại `0.0.0.0:50000`. Windows Local Helper dò các IP trong
+subnet LAN có mở TCP 50000 rồi kết nối `ws://<IP_PI>:50000/stem`. Trên Pi:
 
 ```sh
 cd ~/vehicle_testing
@@ -129,11 +130,17 @@ python -m pip install -r requirements-wifi.txt
 python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
 ```
 
-Mặc định Pi lắng nghe `0.0.0.0:5000`, không kết nối ra máy FE. Xem IP Pi bằng
-`hostname -I`. FE dò IP trong LAN rồi gửi `identify` hoặc `{"type":"identify"}`;
-Pi trả `{"type":"IDENTIFY","uuid":"robot-003","name":"Robot Gamma"}`.
+Pi không kết nối ra máy FE. Xem IP Pi bằng `hostname -I`. Khi người dùng bấm
+Tìm Robot, FE yêu cầu Helper dò IP; Helper gửi `{"action":"identify"}` và nhận:
+
+```json
+{"action":"identify_response","uuid":"robot-003","deviceName":"Robot Gamma"}
+```
+
+Helper ghép UUID/tên với IP vừa kết nối, trả danh sách cho FE hiển thị.
 Server nhận `/stem` và `/` để hỗ trợ bước dò xe. Không nhập `0.0.0.0` làm IP đích
-trên FE; dùng IP LAN của Pi. Việc quét dải IP và hiển thị danh sách vẫn thuộc FE.
+trên FE/Helper; dùng IP LAN của Pi. Helper chạy trên Windows của người dùng,
+không chạy trên Pi; chức năng quét của Helper và hiển thị FE thuộc phía gửi.
 
 Nhận JSON `{"type":"UPLOAD","uuid":"robot-003","code":"..."}`, sau đó
 `{"type":"EXEC","uuid":"robot-003","code":""}` đúng payload FE đã cung cấp.

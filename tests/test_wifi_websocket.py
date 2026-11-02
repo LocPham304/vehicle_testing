@@ -176,7 +176,7 @@ class WebSocketServerTests(TestCase):
             with self.subTest(message=message):
                 connection = FakeConnection([message])
                 self.server.handle_connection(connection)
-                self.assertEqual(connection.sent, [{"type": "IDENTIFY", "uuid": "robot-003", "name": "Robot Gamma"}])
+                self.assertEqual(connection.sent, [{"action": "identify_response", "uuid": "robot-003", "deviceName": "Robot Gamma"}])
                 self.assertIsNone(self.server.owner)
                 self.assertIsNone(self.server.receiver.current_program)
 
@@ -253,7 +253,7 @@ class WebSocketCliTests(TestCase):
         with patch.object(ws, "load_websocket_server", return_value=library), redirect_stdout(StringIO()):
             self.assertEqual(ws.main(["--device-id", "robot-003", "--name", "Robot Gamma"]), 0)
         call = library.serve.call_args
-        self.assertEqual(call.args[1:], ("0.0.0.0", 5000))
+        self.assertEqual(call.args[1:], ("0.0.0.0", 50000))
         self.assertIsNone(call.args[0].__self__.receiver.session.executor)
         self.assertEqual(call.kwargs["max_size"], ws.MAX_MESSAGE_BYTES)
         library.serve.return_value.serve_forever.assert_called_once()
@@ -331,10 +331,24 @@ class WebSocketLoopbackTests(TestCase):
     def test_real_identify_frames_on_stem_and_root(self):
         for uri in (self.uri, self.uri.removesuffix("stem")):
             with self.subTest(uri=uri), self.open(uri) as client:
-                for message in ("identify", '{"type":"identify"}'):
+                for message in ('{"action":"identify"}', "identify", '{"type":"identify"}'):
                     client.send(message)
                     self.assertEqual(json.loads(client.recv(timeout=2)),
-                                     {"type": "IDENTIFY", "uuid": "robot-003", "name": "Robot Gamma"})
+                                     {"action": "identify_response", "uuid": "robot-003", "deviceName": "Robot Gamma"})
+
+    def test_helper_tcp_probe_then_websocket_identify_returns_discovery_row(self):
+        import socket
+        address = self.server.socket.getsockname()
+        # The Windows Helper first checks TCP, then identifies over WebSocket.
+        with socket.create_connection(address, timeout=2):
+            pass
+        with self.open() as client:
+            client.send('{"action":"identify"}')
+            reply = json.loads(client.recv(timeout=2))
+        self.assertEqual(reply["action"], "identify_response")
+        row = {"uuid": reply["uuid"], "ip": address[0], "deviceName": reply["deviceName"]}
+        self.assertEqual(row, {"uuid": "robot-003", "ip": "127.0.0.1", "deviceName": "Robot Gamma"})
+        self.assertIsNone(self.controller.owner)
 
     def test_real_upload_exec_and_discovery_on_separate_connections(self):
         with self.open() as client:

@@ -1,6 +1,6 @@
 # Điều khiển qua Wi-Fi bằng HTTP trực tiếp
 
-Nếu FE kết nối `ws://<IP_PI>:5000/stem`, dùng
+Nếu Windows Local Helper kết nối `ws://<IP_PI>:50000/stem` theo yêu cầu FE, dùng
 [Pi WebSocket server](WIFI_WEBSOCKET.md). Luồng broadcast cũ (`UUID\ncode`,
 `UUID\nEXEC` tại UDP 50000) có [receiver UDP](WIFI_UDP.md) riêng.
 Tài liệu bên dưới dành riêng cho công cụ HTTP.
