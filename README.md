@@ -43,7 +43,8 @@ vehicle_testing/
 │   ├── wifi/
 │   │   ├── receiver.py          # HTTP trực tiếp trên Pi
 │   │   ├── client.py            # HTTP client trên laptop
-│   │   └── udp_receiver.py      # Broadcast UUID + LF + code/EXEC từ BE
+│   │   ├── websocket_receiver.py # Nhận JSON UPLOAD/EXEC qua /stem
+│   │   └── udp_receiver.py      # Luồng UDP cũ UUID + LF + code/EXEC
 │   └── bluetooth/
 │       ├── receiver.py          # Phiên Bluetooth Classic SPP trên Pi
 │       ├── bluez.py             # Đăng ký dịch vụ và nhận socket từ BlueZ
@@ -70,6 +71,7 @@ nguyên vị trí và cấu hình hiện tại. `examples/scratch_sample.txt` c�
 | `usb_receiver.py`, `usb_client.py` | `connections/usb/receiver.py`, `client.py` |
 | `wifi_receiver.py`, `wifi_client.py` | `connections/wifi/receiver.py`, `client.py` |
 | `wifi_udp_receiver.py` | `connections/wifi/udp_receiver.py` |
+| `wifi_websocket_receiver.py` | `connections/wifi/websocket_receiver.py` |
 | `bluetooth_receiver.py`, `bluetooth_client.py` | `connections/bluetooth/receiver.py`, `client.py` |
 | `test_displays.py` | `hardware/displays/matrix.py` |
 | `seven_segment.py` | `hardware/displays/seven_segment.py` |
@@ -116,7 +118,29 @@ bằng cách thay `--dry-run` trên Pi thành `--run`. Giữ công cụ gửi m�
 mất tin hợp lệ trong 5 giây sẽ yêu cầu dừng và xóa kịch bản chờ. Không chạy đồng
 thời các receiver USB, MQTT, Wi-Fi, Bluetooth ở chế độ điều khiển phần cứng.
 
-## Nhận Wi-Fi UDP broadcast từ FE/BE
+## Nhận Wi-Fi WebSocket từ FE/BE
+
+Luồng Wi-Fi mới kết nối tới `ws://192.168.1.93:5000/stem`. Trên Pi:
+
+```sh
+cd ~/vehicle_testing
+source .venv/bin/activate
+python -m pip install -r requirements-wifi.txt
+python wifi_websocket_receiver.py --device-id robot-003 --dry-run
+```
+
+Trên FE chọn Wi-Fi rồi Upload/Chạy. Theo dõi `WS CONNECTED` và `WS RX` trên Pi.
+Pi và FE là hai client của server `/stem`; server phải chuyển tiếp payload từ
+FE sang Pi. Kết nối thành công chưa chứng minh server đã chuyển tiếp dữ liệu.
+
+Nhận JSON `{"type":"UPLOAD","uuid":"robot-003","code":"..."}`, sau đó
+`{"type":"EXEC","uuid":"robot-003","code":""}` đúng payload FE đã cung cấp.
+Upload không tự chạy; mỗi upload chỉ chạy một lần. `--dry-run` mô phỏng,
+`--run` điều khiển motor/LED thật; không có cờ là chỉ preview.
+Ngắt kết nối xóa bản chờ và yêu cầu dừng. Type khác chỉ ghi log; chưa có hợp
+đồng đăng ký robot/STOP/phản hồi về FE. Xem [hướng dẫn WebSocket](docs/WIFI_WEBSOCKET.md).
+
+### Wi-Fi UDP cũ — giữ để đối chiếu
 
 BE thực tế gửi `UUID\n<kịch bản>` và `UUID\nEXEC` qua UDP 50000. Trên Pi:
 

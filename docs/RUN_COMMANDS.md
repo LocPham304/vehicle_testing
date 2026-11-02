@@ -83,7 +83,23 @@ Nhập `upload`, rồi `run` tại dấu nhắc `usb>`.
 
 ## 3. Wi-Fi
 
-### UDP broadcast từ FE/BE đang dùng
+### WebSocket `/stem` — luồng Wi-Fi mới
+
+Trên Pi:
+
+```bash
+python -m pip install -r requirements-wifi.txt
+python wifi_websocket_receiver.py --device-id robot-003 --dry-run
+```
+
+Mặc định kết nối `ws://192.168.1.93:5000/stem`; có thể đổi bằng `--url`.
+Trên FE chọn Wi-Fi, Upload Code rồi Chạy Code; xem `WS RX` trên Pi.
+`--dry-run` mô phỏng khi nhận `EXEC`; đổi sang `--run` để chạy motor/LED thật.
+Không có cờ chỉ preview. Upload không tự chạy; cần gói `EXEC` riêng, mỗi upload
+chỉ chạy một lần. Ngắt kết nối xóa bản chờ/yêu cầu dừng. Phản hồi trạng thái
+hiện ghi tại Pi; chưa xác nhận hợp đồng gửi ngược về FE. Xem [WebSocket](WIFI_WEBSOCKET.md).
+
+### UDP broadcast cũ — không phải WebSocket
 
 Trên Pi sau khi cập nhật source:
 
