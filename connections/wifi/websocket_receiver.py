@@ -177,6 +177,8 @@ class RobotWebSocketServer:
         return None
 
     def handle_message(self, connection, message):
+        logger.info("WS RX RAW tu %s: %r", getattr(connection, "remote_address", None),
+                    message[:200] if isinstance(message, (str, bytes)) else type(message))
         if not isinstance(message, str):
             return {"ok": False, "error": "Can JSON text hoac identify."}
         if len(message.encode("utf-8")) > MAX_MESSAGE_BYTES:
@@ -220,6 +222,10 @@ class RobotWebSocketServer:
         except Exception as error:
             logger.warning("WS CLIENT CLOSED/ERROR: %s", error)
         finally:
+            logger.info("WS CLIENT CLOSED: %s code=%r reason=%r",
+                        getattr(connection, "remote_address", None),
+                        getattr(connection, "close_code", None),
+                        getattr(connection, "close_reason", None))
             with self._lock:
                 self._connections.discard(connection)
                 if self.owner is connection:
