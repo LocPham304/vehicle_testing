@@ -40,6 +40,21 @@ class SessionTests(unittest.TestCase):
         self.session.wait(1)
         self.assertIn("done", [event.get("status") for event in self.events])
 
+    def test_exec_runs_uploaded_program_and_respects_execution_guards(self):
+        self.assertFalse(self.session.dispatch({"action": "exec"})["ok"])
+        self.assertTrue(self.session.dispatch({"action": "upload", "code": SOURCE})["ok"])
+        reply = self.session.dispatch({"action": "exec"})
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(reply["status"], "accepted")
+        self.assertTrue(self.started.wait(1))
+        self.assertEqual(self.calls[0][0].events[-1].value, "văn bản")
+        self.assertFalse(self.session.dispatch({"action": "exec"})["ok"])
+        self.assertEqual(len(self.calls), 1)
+        self.release.set()
+        self.session.wait(1)
+        self.session.reset()
+        self.assertFalse(self.session.dispatch({"action": "exec"})["ok"])
+
     def test_busy_refuses_second_run_and_new_upload_does_not_change_active_program(self):
         self.session.dispatch({"action": "upload", "code": SOURCE})
         self.session.dispatch({"action": "run"})

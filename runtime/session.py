@@ -45,7 +45,8 @@ class RobotSession:
                 logger.info("UPLOAD hop le.\n%s", format_program(program))
                 return {"ok": True, "status": "uploaded", "commands": program.command_count,
                         "markers": program.marker_count}
-            if action == "run":
+            # "run" remains an alias for existing USB/Bluetooth/HTTP clients.
+            if action in ("exec", "run"):
                 if self._busy:
                     return {"ok": False, "error": "Robot dang ban; khong xep hang RUN."}
                 if self._program is None:

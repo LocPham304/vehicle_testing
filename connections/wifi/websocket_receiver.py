@@ -106,7 +106,7 @@ class WebSocketReceiver:
             if not self._armed:
                 logger.warning("WS EXEC: can upload moi truoc khi chay; moi upload cho phep mot EXEC.")
                 return {"ok": False, "error": "Can upload moi truoc EXEC."}
-            reply = self.session.dispatch({"action": "run"})
+            reply = self.session.dispatch({"action": "exec"})
             if reply.get("ok"):
                 self._armed = False
             logger.info("WS EXEC UUID=%s: %s", self.device_id, reply)

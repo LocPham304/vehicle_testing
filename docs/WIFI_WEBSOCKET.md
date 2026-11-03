@@ -97,6 +97,9 @@ UPLOAD và EXEC phải cùng kết nối, đúng UUID. Upload chỉ kiểm tra/l
 tự chạy; mỗi Upload hợp lệ cho phép một EXEC. Parser không eval/exec Python tùy
 ý, hiện hỗ trợ tiến/lùi, quay và LED. Chưa có bộ đọc XML Blockly trực tiếp.
 
+Receiver chuyển `type:"EXEC"` thành lệnh nội bộ `action:"exec"` gửi tới
+`RobotSession`. Session vẫn nhận tên `run` cũ để tương thích các transport khác.
+
 Server trả kết quả JSON trên kết nối đã gửi, ví dụ:
 
 ```json
