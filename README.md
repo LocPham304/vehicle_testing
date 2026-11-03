@@ -127,8 +127,14 @@ subnet LAN có mở TCP 50000 rồi kết nối `ws://<IP_PI>:50000/stem`. Trên
 cd ~/vehicle_testing
 source .venv/bin/activate
 python -m pip install -r requirements-wifi.txt
-python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
+python wifi_websocket_receiver.py --setup   # một lần: nhập UUID/tên robot trên FE
+python wifi_websocket_receiver.py --dry-run # những lần sau: tự đọc định danh Pi
 ```
+
+Mỗi Pi lưu UUID và tên xe riêng trong `device_identity.json` ở gốc project
+(Git bỏ qua file này). Không sao chép cùng một định danh sang các xe khác.
+Chạy lại `--setup` khi cần đổi xe được gán; `--identity-file` chọn file riêng.
+Các cờ `--device-id`, `--name` cũ vẫn ghi đè được cho một lần chạy.
 
 Pi không kết nối ra máy FE. Xem IP Pi bằng `hostname -I`. Khi người dùng bấm
 Tìm Robot, FE yêu cầu Helper dò IP; Helper gửi `{"action":"identify"}` và nhận:
@@ -141,6 +147,7 @@ Helper ghép UUID/tên với IP vừa kết nối, trả danh sách cho FE hiể
 Server nhận `/stem` và `/` để hỗ trợ bước dò xe. Không nhập `0.0.0.0` làm IP đích
 trên FE/Helper; dùng IP LAN của Pi. Helper chạy trên Windows của người dùng,
 không chạy trên Pi; chức năng quét của Helper và hiển thị FE thuộc phía gửi.
+Identify không cần UUID để tìm xe; nếu gửi kèm UUID thì chỉ xe khớp mới trả lời.
 
 Nhận JSON `{"type":"UPLOAD","uuid":"robot-003","code":"..."}`, sau đó
 `{"type":"EXEC","uuid":"robot-003","code":""}` đúng payload FE đã cung cấp.

@@ -197,6 +197,18 @@ class WebSocketServerTests(TestCase):
                 self.assertIsNone(self.server.owner)
                 self.assertIsNone(self.server.receiver.current_program)
 
+    def test_identify_with_explicit_wrong_uuid_does_not_reply(self):
+        connection = FakeConnection(['{"action":"identify","uuid":"robot-001"}'])
+        self.server.handle_connection(connection)
+        self.assertEqual(connection.sent, [])
+        self.assertIsNone(self.server.owner)
+
+    def test_identify_with_matching_uuid_returns_this_robot(self):
+        connection = FakeConnection(['{"action":"identify","uuid":"robot-003"}'])
+        self.server.handle_connection(connection)
+        self.assertEqual(connection.sent, [{"action": "identify_response", "uuid": "robot-003",
+                                           "deviceName": "Robot Gamma"}])
+
     def test_discovery_socket_cannot_clear_another_socket_upload(self):
         probe = FakeConnection(['{"type":"identify"}'])
 

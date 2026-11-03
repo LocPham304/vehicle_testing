@@ -3,19 +3,24 @@
 Listen on 0.0.0.0:50000. Answer action=identify with identify_response, UUID
 and deviceName for LAN discovery. Preview by default; --dry-run simulates UPLOAD/EXEC;
 --run enables the shared hardware runner. Discovery never claims control.
+Use --setup once to save this Pi's registered UUID/name, then start without identity flags.
 """
 
 import argparse
 import importlib
 import json
 import logging
-import re
 import sys
 from http import HTTPStatus
+from pathlib import Path
 from urllib.parse import urlsplit
 from functools import partial
 from threading import RLock
 
+from vehicle_testing.runtime.identity import (
+    DEFAULT_IDENTITY_FILE, DeviceIdentity, load_identity, save_identity,
+    validate_device_id, validate_device_name,
+)
 from vehicle_testing.runtime.parser import format_program, parse_program
 from vehicle_testing.runtime.session import RobotSession
 
@@ -32,11 +37,6 @@ def load_websocket_server():
         return importlib.import_module("websockets.sync.server")
     except ImportError as error:
         raise RuntimeError("Thieu websockets. Cai: python -m pip install -r requirements-wifi.txt") from error
-
-
-def validate_device_id(device_id):
-    if not isinstance(device_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", device_id):
-        raise ValueError("Device ID can 1..64 ky tu ASCII: chu, so, dau cham, gach ngang/duoi.")
 
 
 class WebSocketReceiver:
@@ -162,8 +162,7 @@ class RobotWebSocketServer:
 
     def __init__(self, device_id, *, name=None, executor=None, mode="preview"):
         self.name = name if name is not None else f"Robot {device_id}"
-        if not isinstance(self.name, str) or not self.name.strip() or len(self.name) > 128:
-            raise ValueError("Ten robot can 1..128 ky tu va khong duoc rong.")
+        validate_device_name(self.name)
         self.device_id = device_id
         self.receiver = WebSocketReceiver(device_id, executor=executor, mode=mode)
         self.owner = None
@@ -201,6 +200,9 @@ class RobotWebSocketServer:
         with self._lock:
             if self._closed:
                 return {"ok": False, "error": "Server dang dong."}
+            if "uuid" in payload and payload["uuid"] != self.device_id:
+                logger.info("WS IGNORE UUID: nhan=%r, UUID cua Pi=%s.", payload["uuid"], self.device_id)
+                return None
             if isinstance(kind, str) and kind.lower() == "identify":
                 logger.info("WS IDENTIFY: UUID=%s, name=%r.", self.device_id, self.name)
                 return {"action": "identify_response", "uuid": self.device_id, "deviceName": self.name}
@@ -263,21 +265,41 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default=DEFAULT_HOST, help="Dia chi lang nghe tren Pi, mac dinh 0.0.0.0")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--device-id", required=True)
-    parser.add_argument("--name", help="Ten hien trong FE discovery, vi du Robot Gamma")
+    parser.add_argument("--identity-file", type=Path, default=DEFAULT_IDENTITY_FILE,
+                        help="File UUID/ten rieng cua Pi; mac dinh device_identity.json o goc project")
+    parser.add_argument("--device-id", help="Ghi de UUID cho lan chay nay; --setup de luu lau dai")
+    parser.add_argument("--name", help="Ten robot tren FE; --setup de luu lau dai")
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--setup", action="store_true", help="Gan UUID/ten mot lan, luu file va thoat")
     mode.add_argument("--run", action="store_true", help="EXEC chay motor/LED that sau UPLOAD hop le")
     mode.add_argument("--dry-run", action="store_true", help="EXEC qua runner mo phong, khong mo GPIO")
     args = parser.parse_args(argv)
     try:
-        validate_device_id(args.device_id)
         if not 1 <= args.port <= 65535:
             raise ValueError("Port phai trong [1, 65535].")
-        if args.name is not None and (not args.name.strip() or len(args.name) > 128):
-            raise ValueError("Ten robot can 1..128 ky tu va khong duoc rong.")
-    except ValueError as error:
+        if args.setup:
+            print("Gan dinh danh cho Pi nay. Nhap UUID/ten dung voi robot da dang ky tren FE.")
+            device_id = args.device_id if args.device_id is not None else input("UUID (vi du robot-003): ").strip()
+            name = args.name if args.name is not None else input("Ten robot tren FE: ").strip()
+            identity = DeviceIdentity(device_id, name)
+            save_identity(args.identity_file, identity)
+            print(f"Da luu UUID={identity.uuid}, name={identity.name!r} tai {args.identity_file.resolve()}")
+            config_option = ("" if args.identity_file.resolve() == DEFAULT_IDENTITY_FILE.resolve()
+                             else f' --identity-file "{args.identity_file.resolve()}"')
+            print(f"Lan sau chay: python wifi_websocket_receiver.py{config_option} --dry-run")
+            return 0
+        if args.device_id is not None:
+            name = args.name if args.name is not None else f"Robot {args.device_id}"
+            identity = DeviceIdentity(args.device_id, name)
+        else:
+            identity = load_identity(args.identity_file)
+            if args.name is not None:
+                identity = DeviceIdentity(identity.uuid, args.name)
+    except (ValueError, OSError, EOFError) as error:
         parser.error(str(error))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s", stream=sys.stdout)
+    logger.info("WS IDENTITY: UUID=%s | name=%r | source=%s.", identity.uuid, identity.name,
+                "CLI" if args.device_id is not None else args.identity_file.resolve())
     try:
         websocket = load_websocket_server()
     except RuntimeError as error:
@@ -287,7 +309,7 @@ def main(argv=None):
     if args.run or args.dry_run:
         from vehicle_testing.runtime.runner import execute_program
         executor = partial(execute_program, dry_run=args.dry_run)
-    controller = RobotWebSocketServer(args.device_id, name=args.name, executor=executor,
+    controller = RobotWebSocketServer(identity.uuid, name=identity.name, executor=executor,
                                     mode="hardware" if args.run else "dry-run" if args.dry_run else "preview")
     try:
         with websocket.serve(
@@ -296,7 +318,7 @@ def main(argv=None):
                 ping_interval=20, ping_timeout=10, open_timeout=10, close_timeout=3,
                 compression=None) as server:
             logger.info("WS SERVER LISTENING: %s:%d/stem | UUID=%s | name=%r | mode=%s.",
-                        args.host, args.port, args.device_id, controller.name, controller.receiver.mode)
+                        args.host, args.port, identity.uuid, controller.name, controller.receiver.mode)
             logger.info("Windows Local Helper ket noi ws://<IP_PI>:%d/stem, gui action=identify; "
                         "xem IP Pi bang hostname -I. Ctrl+C de dung.", args.port)
             try:

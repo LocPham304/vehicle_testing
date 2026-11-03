@@ -89,15 +89,20 @@ Trên Pi:
 
 ```bash
 python -m pip install -r requirements-wifi.txt
-python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
+python wifi_websocket_receiver.py --setup   # chỉ một lần trên mỗi Pi
+python wifi_websocket_receiver.py --dry-run
 ```
+
+Setup hỏi UUID/tên robot trên FE và lưu `device_identity.json` riêng cho Pi.
+Những lần sau không cần nhập lại; mỗi xe phải có UUID riêng. Dừng receiver rồi
+chạy lại `--setup` khi muốn đổi cấu hình. File này được Git bỏ qua.
 
 Pi mở server `0.0.0.0:50000`, không kết nối tới máy FE. Xem IP bằng `hostname -I`.
 FE nhờ Windows Local Helper dò TCP 50000; Helper kết nối
 `ws://<IP_PI>:50000/stem`, gửi `{"action":"identify"}` và nhận
 `{"action":"identify_response","uuid":"robot-003","deviceName":"Robot Gamma"}`.
-Lệnh trên chỉ preview, phù hợp test kết nối, không làm xe chạy.
-`--dry-run` mô phỏng khi nhận `EXEC`; đổi sang `--run` để chạy motor/LED thật.
+Lệnh `--dry-run` mô phỏng khi nhận `EXEC`, phù hợp test kết nối, không làm xe chạy.
+Đổi sang `--run` để chạy motor/LED thật.
 Không có cờ chỉ preview. Upload không tự chạy; cần gói `EXEC` riêng, mỗi upload
 chỉ chạy một lần. Ngắt kết nối điều khiển xóa bản chờ/yêu cầu dừng; các kết nối
 dò xe độc lập. Xem [WebSocket](WIFI_WEBSOCKET.md) về identify và ACK.

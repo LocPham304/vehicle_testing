@@ -26,11 +26,37 @@ Cập nhật source và dependency mới `websockets` trong venv Pi:
 cd ~/vehicle_testing
 source .venv/bin/activate
 python -m pip install -r requirements-wifi.txt
-python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma"
+# Chỉ thiết lập một lần trên mỗi Pi:
+python wifi_websocket_receiver.py --setup
+# Những lần sau chỉ cần:
+python wifi_websocket_receiver.py --dry-run
 ```
 
-Không có `--run`: đây là chế độ preview, không mở GPIO/I²C hoặc làm xe chạy.
+`--setup` hỏi UUID và tên robot đã đăng ký trên FE, ví dụ `robot-003` và
+`🚗 Robot Gamma`, rồi lưu và thoát. Không mở server/GPIO trong bước thiết lập.
+Mỗi xe có một Pi riêng nên phải gán UUID riêng đúng với bản ghi trên FE.
+
+Cấu hình lưu tại `device_identity.json` ở thư mục gốc `vehicle_testing`, không
+phụ thuộc thư mục hiện tại khi chạy script. Ví dụ nội dung:
+
+```json
+{"uuid":"robot-003","name":"🚗 Robot Gamma"}
+```
+
+File riêng của từng Pi đã được Git bỏ qua; không sao chép cùng một cấu hình
+định danh cho tất cả xe. Có thể tham khảo `device_identity.example.json`.
+Muốn đổi xe được gán, dừng receiver rồi chạy lại `--setup` để ghi cấu hình mới.
+`--identity-file /duong/dan/xe.json` chọn file riêng; dùng cùng cờ này khi setup
+và khi khởi động receiver. Thiếu/hỏng cấu hình sẽ báo lỗi trước khi mở server.
+
+Không tự lấy UUID từ gói FE hoặc phần tử đầu tiên của `/api/devices`. API đó
+trả danh sách, cần xác thực; luồng hiện tại chưa có ánh xạ phần cứng Pi → UUID robot;
+receiver đọc cấu hình đã lưu nên không cần truy cập API mỗi lần khởi động.
+
+`--dry-run` mô phỏng thực thi sau khi nhận EXEC, không mở GPIO/I²C.
+Chạy `python wifi_websocket_receiver.py` không kèm cờ là chế độ preview.
 Log khởi động phải có `WS SERVER LISTENING: 0.0.0.0:50000/stem`.
+Log `WS IDENTITY` ghi UUID/tên và đường dẫn cấu hình đang sử dụng.
 Xem IP LAN thực tế của Pi trong terminal khác:
 
 ```bash
@@ -73,9 +99,15 @@ Tất cả đều trả đúng schema đã chốt:
 {"action":"identify_response","uuid":"robot-003","deviceName":"Robot Gamma"}
 ```
 
-Tên tùy chỉnh bằng `--name`; mặc định `Robot <UUID>`. UUID lấy từ `--device-id`,
-ổn định giữa các lần chạy nếu giữ nguyên cờ. Nhiều kết nối dò xe có thể nhận
-identity cùng lúc; chúng không giành quyền điều khiển hoặc xóa kịch bản khi đóng.
+Nếu Identify có trường `uuid`, chỉ Pi có UUID khớp mới trả lời; UUID khác sẽ
+bị bỏ qua và ghi `WS IGNORE UUID`. Identify không có UUID vẫn được mọi Pi trả
+lời để Helper khám phá danh sách xe.
+
+UUID/tên được đọc từ cấu hình riêng của Pi. Các cờ `--device-id`, `--name` cũ
+vẫn dùng được để ghi đè cho một lần chạy, không tự ghi lại file. Khi truyền
+`--device-id` mà không truyền tên, tên là `Robot <UUID>`, không lấy tên của xe
+khác trong cấu hình. Nhiều kết nối dò xe có thể nhận identity cùng lúc; chúng
+không giành quyền điều khiển hoặc xóa kịch bản khi đóng.
 Helper lấy IP từ kết nối đang hỏi, không suy ra IP từ UUID; cùng UUID có thể đổi
 IP sau khi DHCP cấp lại. Helper tổng hợp mỗi kết quả thành hàng UUID/IP/tên.
 Đã có kiểm thử TCP probe rồi WebSocket identify qua loopback; discovery qua LAN
@@ -117,7 +149,7 @@ và hủy worker. Kết nối mới cần Upload lại. Ctrl+C dừng server và
 ## Mô phỏng và chạy thật sau khi test kết nối
 
 ```bash
-python wifi_websocket_receiver.py --device-id robot-003 --name "Robot Gamma" --dry-run
+python wifi_websocket_receiver.py --dry-run
 ```
 
 `--dry-run` đi qua runner mô phỏng khi nhận EXEC, không mở phần cứng. Chỉ khi
