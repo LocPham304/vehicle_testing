@@ -113,9 +113,21 @@ IP sau khi DHCP cấp lại. Helper tổng hợp mỗi kết quả thành hàng 
 Đã có kiểm thử TCP probe rồi WebSocket identify qua loopback; discovery qua LAN
 và UI FE thực tế cần kiểm tra tại mạng người dùng.
 
-## Giữ luồng UPLOAD/EXEC đã xác nhận
+## Upload và EXEC từ FE
 
-FE gửi một JSON object trong mỗi WebSocket message:
+FE hiện gửi một JSON object trong mỗi WebSocket message, dùng `action` và
+`payload` (code Python ở dạng chuỗi):
+
+```javascript
+ws.send(JSON.stringify({
+  action: "upload", uuid: "robot-003",
+  payload: 'report_block("block-1")\nrobot.sendCmd("move_forward:5")\n'
+}));
+// Giữ nguyên ws đang mở; chỉ gửi EXEC sau khi Pi xác nhận upload thành công.
+ws.send(JSON.stringify({action: "exec", uuid: "robot-003", payload: ""}));
+```
+
+Receiver vẫn nhận dạng `type`/`code` cũ để tương thích:
 
 ```javascript
 ws.send(JSON.stringify({
@@ -129,7 +141,7 @@ UPLOAD và EXEC phải cùng kết nối, đúng UUID. Upload chỉ kiểm tra/l
 tự chạy; mỗi Upload hợp lệ cho phép một EXEC. Parser không eval/exec Python tùy
 ý, hiện hỗ trợ tiến/lùi, quay và LED. Chưa có bộ đọc XML Blockly trực tiếp.
 
-Receiver chuyển `type:"EXEC"` thành lệnh nội bộ `action:"exec"` gửi tới
+Receiver chuyển `action:"exec"` hoặc `type:"EXEC"` thành lệnh nội bộ `action:"exec"` gửi tới
 `RobotSession`. Session vẫn nhận tên `run` cũ để tương thích các transport khác.
 
 Server trả kết quả JSON trên kết nối đã gửi, ví dụ:
@@ -138,6 +150,10 @@ Server trả kết quả JSON trên kết nối đã gửi, ví dụ:
 {"ok":true,"status":"uploaded","commands":1,"markers":1}
 ```
 
+FE nên chờ phản hồi `ok:true, status:"uploaded"` trước khi báo Upload thành công;
+`WebSocket.send()` chỉ xác nhận phía client đã gửi/xếp dữ liệu để gửi, không
+chứng minh Pi đã kiểm tra và lưu chương trình.
+
 EXEC trả `status:"preview"` ở chế độ mặc định, hoặc `status:"accepted"` khi đã
 bật runner. `accepted` chưa có nghĩa xe đã chạy xong. Các block/trạng thái hoàn
 tất hiện ghi ở Pi; chưa thống nhất protocol sự kiện hoàn tất/Dừng với FE.
@@ -145,6 +161,13 @@ tất hiện ghi ở Pi; chưa thống nhất protocol sự kiện hoàn tất/D
 Một kết nối Upload giữ quyền điều khiển tới khi nó ngắt; kết nối khác vẫn có
 thể Identify nhưng không thay code/chạy xe. Ngắt kết nối điều khiển xóa bản chờ
 và hủy worker. Kết nối mới cần Upload lại. Ctrl+C dừng server và dọn worker.
+FE không được mở socket mới cho mỗi nút Upload/Chạy rồi đóng ngay sau khi gửi.
+
+`WS RX RAW` chỉ in 200 ký tự đầu và có nhãn `log rut gon` nếu message dài hơn;
+đây là giới hạn hiển thị log, không cắt dữ liệu đưa vào parser. Upload thành
+công sẽ log đầy đủ danh sách block/lệnh, tổng số block marker, số lệnh và số
+byte code. Block Bắt đầu có thể chỉ tạo marker nên 7 marker có thể tương ứng
+6 lệnh điều khiển, không phải mất một block.
 
 ## Mô phỏng và chạy thật sau khi test kết nối
 

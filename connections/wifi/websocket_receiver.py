@@ -30,6 +30,7 @@ DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 50000
 MAX_MESSAGE_BYTES = 512 * 1024
 MAX_LOG_CHARS = 4096
+MAX_RAW_LOG_CHARS = 200
 
 
 def load_websocket_server():
@@ -37,6 +38,16 @@ def load_websocket_server():
         return importlib.import_module("websockets.sync.server")
     except ImportError as error:
         raise RuntimeError("Thieu websockets. Cai: python -m pip install -r requirements-wifi.txt") from error
+
+
+def control_fields(payload):
+    """Read the FE action/payload format or the existing type/code format."""
+    if "type" in payload:
+        return payload.get("type"), payload.get("code")
+    action = payload.get("action")
+    kind = ({"upload": "UPLOAD", "exec": "EXEC"}.get(action.lower(), action)
+            if isinstance(action, str) else action)
+    return kind, payload.get("payload")
 
 
 class WebSocketReceiver:
@@ -99,10 +110,10 @@ class WebSocketReceiver:
         if payload.get("uuid") != self.device_id:
             logger.info("Bo qua payload khong dung UUID=%s.", self.device_id)
             return None
-        kind = payload.get("type")
+        kind, code = control_fields(payload)
         if kind == "EXEC":
-            if payload.get("code") != "":
-                return {"ok": False, "error": "Goi EXEC can code rong nhu payload FE da xac nhan."}
+            if code != "":
+                return {"ok": False, "error": "Goi EXEC can payload/code rong; can UPLOAD truoc khi chay."}
             if not self._armed:
                 logger.warning("WS EXEC: can upload moi truoc khi chay; moi upload cho phep mot EXEC.")
                 return {"ok": False, "error": "Can upload moi truoc EXEC."}
@@ -119,15 +130,16 @@ class WebSocketReceiver:
             return {"ok": False, "error": "Robot dang chay; khong nhan upload moi."}
         self._armed = False
         self.current_program = None
-        reply = self.session.dispatch({"action": "upload", "code": payload.get("code")})
+        reply = self.session.dispatch({"action": "upload", "code": code})
         if not reply.get("ok"):
             logger.warning("WS UPLOAD khong hop le; da xoa ban cho cu: %s", reply)
             return reply
-        program = parse_program(payload["code"])
+        program = parse_program(code)
         self.current_program = program
         self._armed = True
-        logger.info("WS UPLOAD UUID=%s | %d lenh.\n%s", self.device_id,
-                    program.command_count, format_program(program))
+        logger.info("WS UPLOAD UUID=%s | %d block marker | %d lenh | %d byte code.\n%s", self.device_id,
+                    program.marker_count, program.command_count, len(code.encode("utf-8")),
+                    format_program(program))
         logger.info("Upload KHONG tu chay; cho type EXEC. Mode=%s. Ket qua chi log tai Pi.", self.mode)
         return reply
 
@@ -184,8 +196,11 @@ class RobotWebSocketServer:
             return None
 
     def handle_message(self, connection, message):
-        logger.info("WS RX RAW tu %s: %r", self._remote_address(connection),
-                    message[:200] if isinstance(message, (str, bytes)) else type(message))
+        truncated = isinstance(message, (str, bytes)) and len(message) > MAX_RAW_LOG_CHARS
+        logger.info("WS RX RAW tu %s: %r%s", self._remote_address(connection),
+                    message[:MAX_RAW_LOG_CHARS] if isinstance(message, (str, bytes)) else type(message),
+                    f" [log rut gon: {MAX_RAW_LOG_CHARS}/{len(message)} ky tu; khong cat message]"
+                    if truncated else "")
         if not isinstance(message, str):
             return {"ok": False, "error": "Can JSON text hoac identify."}
         if len(message.encode("utf-8")) > MAX_MESSAGE_BYTES:
@@ -196,7 +211,7 @@ class RobotWebSocketServer:
                 raise ValueError("Can JSON object.")
         except (ValueError, UnicodeError, RecursionError) as error:
             return {"ok": False, "error": str(error)}
-        kind = payload.get("type", payload.get("action"))
+        kind, _ = control_fields(payload)
         with self._lock:
             if self._closed:
                 return {"ok": False, "error": "Server dang dong."}

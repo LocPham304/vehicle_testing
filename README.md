@@ -149,8 +149,11 @@ trên FE/Helper; dùng IP LAN của Pi. Helper chạy trên Windows của ngư�
 không chạy trên Pi; chức năng quét của Helper và hiển thị FE thuộc phía gửi.
 Identify không cần UUID để tìm xe; nếu gửi kèm UUID thì chỉ xe khớp mới trả lời.
 
-Nhận JSON `{"type":"UPLOAD","uuid":"robot-003","code":"..."}`, sau đó
-`{"type":"EXEC","uuid":"robot-003","code":""}` đúng payload FE đã cung cấp.
+Nhận JSON `{"action":"upload","uuid":"robot-003","payload":"<code>"}`, sau đó
+`{"action":"exec","uuid":"robot-003","payload":""}` trên cùng WebSocket.
+Vẫn hỗ trợ dạng `type:"UPLOAD"`/`type:"EXEC"` và trường `code` cũ.
+FE cần chờ phản hồi `status:"uploaded"` trước khi báo Upload thành công và
+giữ socket để gửi EXEC; đóng socket sẽ xóa chương trình chờ.
 Upload không tự chạy; mỗi upload chỉ chạy một lần. `--dry-run` mô phỏng,
 `--run` điều khiển motor/LED thật; không có cờ là chỉ preview.
 Ngắt kết nối điều khiển xóa bản chờ và yêu cầu dừng; ngắt kết nối dò xe không
