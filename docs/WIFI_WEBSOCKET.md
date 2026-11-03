@@ -115,6 +115,30 @@ và UI FE thực tế cần kiểm tra tại mạng người dùng.
 
 ## Upload và EXEC từ FE
 
+### Chạy trực tiếp, không cần bấm Upload
+
+Nút Chạy Code có thể gửi luôn code hiện tại trong `payload` của `action:"exec"`:
+
+```javascript
+ws.send(JSON.stringify({
+  action: "exec", uuid: "robot-003",
+  payload: 'report_block("block-1")\nrobot.sendCmd("move_forward:5")\n'
+}));
+```
+
+Pi kiểm tra toàn bộ code bằng parser/validator hiện có, lưu chương trình và
+thực thi trong cùng yêu cầu. Không dùng `eval`/`exec` để chạy Python tùy ý.
+`--dry-run` mô phỏng, `--run` chạy phần cứng, mặc định chỉ preview.
+Code mới sai thì không chạy lại chương trình cũ; đang thực thi thì từ chối
+chương trình mới. Vẫn kiểm tra đúng UUID và một kết nối điều khiển.
+
+FE phải gửi code thật, không gửi `payload:""` nếu chưa Upload. Chuỗi rỗng vẫn
+có nghĩa chạy bản đã Upload; Pi không tự đọc được các block đang nằm trên FE.
+Kết nối mới có thể gửi EXEC kèm code ngay từ message đầu tiên. Giữ socket mở
+trong suốt lúc chạy; đóng kết nối điều khiển sẽ yêu cầu dừng và xóa chương trình.
+
+### Luồng hai bước Upload rồi EXEC
+
 FE hiện gửi một JSON object trong mỗi WebSocket message, dùng `action` và
 `payload` (code Python ở dạng chuỗi):
 
@@ -137,7 +161,7 @@ ws.send(JSON.stringify({
 ws.send(JSON.stringify({type: "EXEC", uuid: "robot-003", code: ""}));
 ```
 
-UPLOAD và EXEC phải cùng kết nối, đúng UUID. Upload chỉ kiểm tra/lưu chờ, không
+Với luồng hai bước, UPLOAD và EXEC phải cùng kết nối, đúng UUID. Upload chỉ kiểm tra/lưu chờ, không
 tự chạy; mỗi Upload hợp lệ cho phép một EXEC. Parser không eval/exec Python tùy
 ý, hiện hỗ trợ tiến/lùi, quay và LED. Chưa có bộ đọc XML Blockly trực tiếp.
 
@@ -161,7 +185,9 @@ tất hiện ghi ở Pi; chưa thống nhất protocol sự kiện hoàn tất/D
 Một kết nối Upload giữ quyền điều khiển tới khi nó ngắt; kết nối khác vẫn có
 thể Identify nhưng không thay code/chạy xe. Ngắt kết nối điều khiển xóa bản chờ
 và hủy worker. Kết nối mới cần Upload lại. Ctrl+C dừng server và dọn worker.
-FE không được mở socket mới cho mỗi nút Upload/Chạy rồi đóng ngay sau khi gửi.
+Với luồng hai bước, FE không được đóng socket Upload rồi mở socket khác cho
+EXEC rỗng. Với cả hai luồng, không đóng socket ngay sau khi gửi EXEC hoặc vừa
+nhận `status:"accepted"`, vì đây chưa phải trạng thái hoàn tất.
 
 `WS RX RAW` chỉ in 200 ký tự đầu và có nhãn `log rut gon` nếu message dài hơn;
 đây là giới hạn hiển thị log, không cắt dữ liệu đưa vào parser. Upload thành

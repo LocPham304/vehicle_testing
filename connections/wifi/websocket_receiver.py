@@ -4,6 +4,7 @@ Listen on 0.0.0.0:50000. Answer action=identify with identify_response, UUID
 and deviceName for LAN discovery. Preview by default; --dry-run simulates UPLOAD/EXEC;
 --run enables the shared hardware runner. Discovery never claims control.
 Use --setup once to save this Pi's registered UUID/name, then start without identity flags.
+FE action=exec with code in payload validates and runs without a separate upload.
 """
 
 import argparse
@@ -48,6 +49,11 @@ def control_fields(payload):
     kind = ({"upload": "UPLOAD", "exec": "EXEC"}.get(action.lower(), action)
             if isinstance(action, str) else action)
     return kind, payload.get("payload")
+
+
+def has_exec_code(payload, kind, code):
+    """Only the FE action/payload protocol supports a self-contained EXEC."""
+    return "type" not in payload and kind == "EXEC" and isinstance(code, str) and code != ""
 
 
 class WebSocketReceiver:
@@ -112,35 +118,50 @@ class WebSocketReceiver:
             return None
         kind, code = control_fields(payload)
         if kind == "EXEC":
-            if code != "":
-                return {"ok": False, "error": "Goi EXEC can payload/code rong; can UPLOAD truoc khi chay."}
-            if not self._armed:
-                logger.warning("WS EXEC: can upload moi truoc khi chay; moi upload cho phep mot EXEC.")
-                return {"ok": False, "error": "Can upload moi truoc EXEC."}
-            reply = self.session.dispatch({"action": "exec"})
-            if reply.get("ok"):
-                self._armed = False
-            logger.info("WS EXEC UUID=%s: %s", self.device_id, reply)
-            return reply
+            if has_exec_code(payload, kind, code):
+                reply = self._prepare_program(code, inline=True)
+                if not reply.get("ok"):
+                    return reply
+            elif code != "":
+                return {"ok": False, "error": "EXEC can payload la chuoi code, hoac chuoi rong sau UPLOAD."}
+            return self._execute_uploaded()
         if kind != "UPLOAD":
             logger.info("WS EVENT UUID=%s type=%r: da bat tin, chua gan vao lenh chay xe.",
                         self.device_id, kind)
             return {"ok": False, "error": "Type chua duoc xac nhan; chi ghi log."}
+        return self._prepare_program(code)
+
+    def _execute_uploaded(self):
+        if not self._armed:
+            logger.warning("WS EXEC: can upload moi hoac gui code trong payload de chay.")
+            return {"ok": False, "error": "Can upload moi hoac gui EXEC kem code."}
+        reply = self.session.dispatch({"action": "exec"})
+        if reply.get("ok"):
+            self._armed = False
+        logger.info("WS EXEC UUID=%s: %s", self.device_id, reply)
+        return reply
+
+    def _prepare_program(self, code, *, inline=False):
+        label = "WS EXEC CODE" if inline else "WS UPLOAD"
         if self.session.dispatch({"action": "status"})["status"] == "executing":
             return {"ok": False, "error": "Robot dang chay; khong nhan upload moi."}
         self._armed = False
         self.current_program = None
         reply = self.session.dispatch({"action": "upload", "code": code})
         if not reply.get("ok"):
-            logger.warning("WS UPLOAD khong hop le; da xoa ban cho cu: %s", reply)
+            logger.warning("%s khong hop le; da xoa ban cho cu: %s", label, reply)
             return reply
         program = parse_program(code)
         self.current_program = program
         self._armed = True
-        logger.info("WS UPLOAD UUID=%s | %d block marker | %d lenh | %d byte code.\n%s", self.device_id,
+        logger.info("%s UUID=%s | %d block marker | %d lenh | %d byte code.\n%s",
+                    label, self.device_id,
                     program.marker_count, program.command_count, len(code.encode("utf-8")),
                     format_program(program))
-        logger.info("Upload KHONG tu chay; cho type EXEC. Mode=%s. Ket qua chi log tai Pi.", self.mode)
+        if inline:
+            logger.info("EXEC kem code da kiem tra; thuc thi ngay. Mode=%s.", self.mode)
+        else:
+            logger.info("Upload KHONG tu chay; cho EXEC. Mode=%s. Ket qua chi log tai Pi.", self.mode)
         return reply
 
     def on_error(self, connection, error):
@@ -211,7 +232,7 @@ class RobotWebSocketServer:
                 raise ValueError("Can JSON object.")
         except (ValueError, UnicodeError, RecursionError) as error:
             return {"ok": False, "error": str(error)}
-        kind, _ = control_fields(payload)
+        kind, code = control_fields(payload)
         with self._lock:
             if self._closed:
                 return {"ok": False, "error": "Server dang dong."}
@@ -224,8 +245,8 @@ class RobotWebSocketServer:
             if payload.get("uuid") != self.device_id:
                 return None
             if self.owner is None:
-                if kind != "UPLOAD":
-                    return {"ok": False, "error": "Can UPLOAD tren ket noi nay truoc EXEC."}
+                if kind != "UPLOAD" and not has_exec_code(payload, kind, code):
+                    return {"ok": False, "error": "Can UPLOAD hoac gui EXEC kem code tren ket noi nay."}
                 self.owner = connection
                 self.receiver.on_open(connection)
             elif self.owner is not connection:

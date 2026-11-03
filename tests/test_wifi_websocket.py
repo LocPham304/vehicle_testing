@@ -55,9 +55,9 @@ class WebSocketReceiverTests(TestCase):
         self.assertEqual(self.receiver.current_program.events[-1].block_id, "led-last")
         self.socket.send.assert_not_called()
 
-    def test_action_exec_requires_empty_payload_and_consumes_upload_once(self):
+    def test_action_exec_empty_payload_consumes_existing_upload_once(self):
         self.upload()
-        for payload in (None, CODE):
+        for payload in (None, [], 42):
             reply = self.receiver.on_message(self.socket, json.dumps({
                 "action": "exec", "uuid": "robot-003", "payload": payload}))
             self.assertFalse(reply["ok"])
@@ -66,6 +66,46 @@ class WebSocketReceiverTests(TestCase):
         self.assertTrue(reply["ok"], reply)
         self.assertEqual(reply["status"], "preview")
         self.assertFalse(self.receiver.on_message(self.socket, message)["ok"])
+
+    def test_inline_exec_runs_all_supplied_blocks_without_separate_upload(self):
+        reply = self.receiver.on_message(self.socket, json.dumps({
+            "action": "exec", "uuid": "robot-003", "payload": FE_CODE}))
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual((reply["status"], reply["commands"]), ("preview", 6))
+        self.assertEqual(self.receiver.current_program.marker_count, 7)
+        self.assertEqual(self.receiver.current_program.events[-1].value, "văn bản")
+        self.assertFalse(self.execute()["ok"])
+
+    def test_inline_exec_replaces_old_pending_code_with_current_supplied_code(self):
+        self.upload()
+        reply = self.receiver.on_message(self.socket, json.dumps({
+            "action": "exec", "uuid": "robot-003", "payload": FE_CODE}))
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(reply["commands"], 6)
+        self.assertEqual(self.receiver.current_program.events[-1].block_id, "led-last")
+
+    def test_invalid_inline_exec_clears_old_code_instead_of_running_it(self):
+        for code in ("import os", "   ", 'robot.sendCmd("unknown:1")'):
+            with self.subTest(code=code):
+                self.upload()
+                reply = self.receiver.on_message(self.socket, json.dumps({
+                    "action": "exec", "uuid": "robot-003", "payload": code}))
+                self.assertFalse(reply["ok"])
+                self.assertIsNone(self.receiver.current_program)
+                self.assertFalse(self.execute()["ok"])
+
+    def test_each_inline_exec_with_fresh_code_can_start_after_previous_run_finishes(self):
+        executor = Mock()
+        receiver = ws.WebSocketReceiver("robot-003", executor=executor)
+        self.addCleanup(receiver.close)
+        receiver.on_open(self.socket)
+        message = json.dumps({"action": "exec", "uuid": "robot-003", "payload": CODE})
+        for _ in range(2):
+            self.assertEqual(receiver.on_message(self.socket, message)["status"], "accepted")
+            receiver.session.wait(1)
+        self.assertEqual(executor.call_count, 2)
+        self.assertFalse(receiver.on_message(self.socket,
+                         '{"action":"exec","uuid":"robot-003","payload":""}')["ok"])
 
     def test_invalid_action_upload_clears_old_program(self):
         self.upload()
@@ -257,6 +297,58 @@ class WebSocketServerTests(TestCase):
         self.assertIn("BLOCK id='led-last'", output)
         self.assertIn("văn bản", output)
         self.assertIn("log rut gon", output)
+
+    def test_first_message_can_exec_supplied_code_without_upload(self):
+        connection = FakeConnection([json.dumps({
+            "action": "exec", "uuid": "robot-003", "payload": FE_CODE})])
+        self.server.handle_connection(connection)
+        self.assertEqual([(reply.get("status"), reply.get("commands")) for reply in connection.sent],
+                         [("preview", 6)])
+
+    def test_inline_exec_respects_other_controller_and_wrong_uuid(self):
+        wrong = FakeConnection([json.dumps({"action": "exec", "uuid": "robot-002", "payload": FE_CODE})])
+        self.server.handle_connection(wrong)
+        self.assertEqual(wrong.sent, [])
+        self.assertIsNone(self.server.owner)
+        owner = FakeConnection()
+        self.assertTrue(self.server.handle_message(owner, json.dumps({
+            "action": "upload", "uuid": "robot-003", "payload": CODE}))["ok"])
+        other = FakeConnection([json.dumps({"action": "exec", "uuid": "robot-003", "payload": FE_CODE})])
+        self.server.handle_connection(other)
+        self.assertFalse(other.sent[0]["ok"])
+        self.assertEqual(self.server.receiver.current_program.command_count, 1)
+
+    def test_inline_exec_rejects_busy_replacement_and_disconnect_cancels_worker(self):
+        started, stopped = Event(), Event()
+        received = []
+
+        def execute(program, *, stop_event, reporter):
+            received.append(program)
+            started.set()
+            stop_event.wait(2)
+            stopped.set()
+
+        server = ws.RobotWebSocketServer("robot-003", executor=execute)
+        self.addCleanup(server.close)
+        connection = FakeConnection()
+        observations = []
+
+        def messages():
+            yield json.dumps({"action": "exec", "uuid": "robot-003", "payload": CODE})
+            observations.append(started.wait(1))
+            yield json.dumps({"action": "exec", "uuid": "robot-003", "payload": FE_CODE})
+            observations.append(not stopped.is_set())
+
+        connection.messages = messages()
+        server.handle_connection(connection)
+        self.assertEqual(connection.sent[0].get("status"), "accepted")
+        self.assertFalse(connection.sent[1]["ok"])
+        self.assertEqual(observations, [True, True])
+        self.assertTrue(stopped.wait(1))
+        server.receiver.session.wait(1)
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].command_count, 1)
+        self.assertIsNone(server.receiver.current_program)
 
     def test_action_upload_disconnect_still_requires_upload_on_new_connection(self):
         connection = FakeConnection([json.dumps({"action": "upload", "uuid": "robot-003", "payload": CODE})])
@@ -513,6 +605,25 @@ class WebSocketLoopbackTests(TestCase):
             self.assertEqual(self.controller.receiver.current_program.events[-1].value, "văn bản")
             client.send('{"action":"exec","uuid":"robot-003","payload":""}')
             self.assertEqual(json.loads(client.recv(timeout=2))["status"], "accepted")
+            self.controller.receiver.session.wait(2)
+            client.send('{"action":"exec","uuid":"robot-003","payload":""}')
+            self.assertFalse(json.loads(client.recv(timeout=2))["ok"])
+        output = "\n".join(logs.output)
+        for block_id in ("start", "forward", "left", "back-1", "back-2", "led-1", "led-last"):
+            self.assertIn(f"'block_id': '{block_id}'", output)
+        self.assertIn("'status': 'done'", output)
+
+    def test_real_inline_exec_without_upload_runs_all_blocks_in_dry_run(self):
+        from functools import partial
+        from vehicle_testing.runtime.runner import execute_program
+
+        self.controller.receiver.session.executor = partial(execute_program, dry_run=True)
+        self.controller.receiver.mode = "dry-run"
+        with self.assertLogs(ws.logger, level="INFO") as logs, self.open() as client:
+            client.send(json.dumps({"action": "exec", "uuid": "robot-003", "payload": FE_CODE}))
+            reply = json.loads(client.recv(timeout=2))
+            self.assertTrue(reply["ok"], reply)
+            self.assertEqual(reply["status"], "accepted")
             self.controller.receiver.session.wait(2)
             client.send('{"action":"exec","uuid":"robot-003","payload":""}')
             self.assertFalse(json.loads(client.recv(timeout=2))["ok"])

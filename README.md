@@ -151,6 +151,9 @@ Identify không cần UUID để tìm xe; nếu gửi kèm UUID thì chỉ xe kh
 
 Nhận JSON `{"action":"upload","uuid":"robot-003","payload":"<code>"}`, sau đó
 `{"action":"exec","uuid":"robot-003","payload":""}` trên cùng WebSocket.
+Hoặc nút Chạy Code gửi luôn `{"action":"exec","uuid":"robot-003","payload":"<code>"}`
+để Pi kiểm tra và chạy ngay, không cần Upload riêng. FE phải gửi code hiện tại
+và giữ socket mở trong lúc chạy; `payload:""` không chứa chương trình mới.
 Vẫn hỗ trợ dạng `type:"UPLOAD"`/`type:"EXEC"` và trường `code` cũ.
 FE cần chờ phản hồi `status:"uploaded"` trước khi báo Upload thành công và
 giữ socket để gửi EXEC; đóng socket sẽ xóa chương trình chờ.
