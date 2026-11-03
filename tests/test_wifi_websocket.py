@@ -166,6 +166,23 @@ class FakeConnection:
         self.closed = True
 
 
+class ClosedSocketConnection(FakeConnection):
+    close_code = 1000
+    close_reason = "Test complete"
+
+    @property
+    def remote_address(self):
+        if self.closed:
+            raise OSError(9, "Bad file descriptor")
+        return ("192.168.1.10", 56110)
+
+    def __iter__(self):
+        try:
+            yield from self.messages
+        finally:
+            self.closed = True
+
+
 class WebSocketServerTests(TestCase):
     def setUp(self):
         self.server = ws.RobotWebSocketServer("robot-003", name="Robot Gamma")
@@ -214,6 +231,36 @@ class WebSocketServerTests(TestCase):
         self.server.handle_connection(other)
         self.assertFalse(other.sent[-1]["ok"])
         self.assertIsNone(self.server.receiver.current_program)
+
+    def test_closed_socket_logging_preserves_address_and_releases_owner(self):
+        upload = json.dumps({"type": "UPLOAD", "uuid": "robot-003", "code": CODE})
+        connection = ClosedSocketConnection([upload])
+        error = None
+        with self.assertLogs(ws.logger, level="INFO") as logs:
+            try:
+                self.server.handle_connection(connection)
+            except OSError as caught:
+                error = caught
+        self.assertIsNone(error, "Reading the closed socket must not interrupt cleanup")
+        self.assertTrue(connection.sent[0]["ok"])
+        self.assertIsNone(self.server.owner)
+        self.assertIsNone(self.server.receiver.current_program)
+        self.assertNotIn(connection, self.server._connections)
+        self.assertIn("WS CLIENT CLOSED: ('192.168.1.10', 56110) code=1000 reason='Test complete'",
+                      "\n".join(logs.output))
+
+    def test_raw_message_log_tolerates_socket_closed_by_receive_thread(self):
+        connection = ClosedSocketConnection()
+        connection.closed = True
+        result = None
+        error = None
+        try:
+            result = self.server.handle_message(connection, '{"action":"identify"}')
+        except OSError as caught:
+            error = caught
+        self.assertIsNone(error, "Diagnostic logging must not prevent message handling")
+        self.assertEqual(result, {"action": "identify_response", "uuid": "robot-003",
+                                  "deviceName": "Robot Gamma"})
 
     def test_wrong_uuid_does_not_claim_control_and_bad_json_returns_error(self):
         connection = FakeConnection(['{"type":"UPLOAD","uuid":"robot-004","code":"bad"}', "invalid", "[]", b"binary"])

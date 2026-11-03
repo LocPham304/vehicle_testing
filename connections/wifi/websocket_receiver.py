@@ -176,8 +176,16 @@ class RobotWebSocketServer:
             return connection.respond(HTTPStatus.NOT_FOUND, "WebSocket endpoint: /stem\n")
         return None
 
+    @staticmethod
+    def _remote_address(connection):
+        # The receive thread may already have closed the underlying socket.
+        try:
+            return getattr(connection, "remote_address", None)
+        except OSError:
+            return None
+
     def handle_message(self, connection, message):
-        logger.info("WS RX RAW tu %s: %r", getattr(connection, "remote_address", None),
+        logger.info("WS RX RAW tu %s: %r", self._remote_address(connection),
                     message[:200] if isinstance(message, (str, bytes)) else type(message))
         if not isinstance(message, str):
             return {"ok": False, "error": "Can JSON text hoac identify."}
@@ -213,7 +221,8 @@ class RobotWebSocketServer:
                 connection.close(code=1001, reason="Server stopping")
                 return
             self._connections.add(connection)
-        logger.info("WS CLIENT CONNECTED: %s", getattr(connection, "remote_address", "FE"))
+        remote_address = self._remote_address(connection)
+        logger.info("WS CLIENT CONNECTED: %s", remote_address)
         try:
             for message in connection:
                 reply = self.handle_message(connection, message)
@@ -223,7 +232,7 @@ class RobotWebSocketServer:
             logger.warning("WS CLIENT CLOSED/ERROR: %s", error)
         finally:
             logger.info("WS CLIENT CLOSED: %s code=%r reason=%r",
-                        getattr(connection, "remote_address", None),
+                        remote_address,
                         getattr(connection, "close_code", None),
                         getattr(connection, "close_reason", None))
             with self._lock:
