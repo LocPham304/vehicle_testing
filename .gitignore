@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 # One registered identity per physical Pi; do not clone an assignment to other cars.
 /device_identity.json
+/received_programs/

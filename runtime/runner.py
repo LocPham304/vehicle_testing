@@ -96,6 +96,9 @@ class DryRunMatrix:
         normalized, _ = text_columns(text)
         logger.info("[MO PHONG] LED MATRIX: %r -> %s (mot luot)", text, normalized or "(xoa)")
 
+    def close(self):
+        logger.debug("[MO PHONG] Dong LED MATRIX.")
+
 
 def open_motor(*, sleeper=time.sleep):
     output = PCA9685Output()

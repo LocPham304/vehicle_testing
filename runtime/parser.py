@@ -23,6 +23,16 @@ class ScratchParseError(ValueError):
 
 
 @dataclass(frozen=True)
+class NumericCommandSpec:
+    """Opt-in numeric command for converters; default runner commands stay unchanged."""
+
+    unit: str
+    minimum: float = 0.0
+    maximum: float | None = None
+    include_minimum: bool = False
+
+
+@dataclass(frozen=True)
 class BlockMarker:
     block_id: str
     line: int
@@ -54,8 +64,12 @@ def _error(node, message):
     return ScratchParseError(message, node.lineno, node.col_offset + 1)
 
 
-def parse_program(source: str) -> ScratchProgram:
+def parse_program(source: str, *,
+                  extra_numeric_commands: dict[str, NumericCommandSpec] | None = None) -> ScratchProgram:
     """Accept only literal report_block/sendCmd calls in a sequential program."""
+    numeric_commands = {name: NumericCommandSpec(unit) for name, unit in NUMERIC_COMMANDS.items()}
+    if extra_numeric_commands:
+        numeric_commands.update(extra_numeric_commands)
     if not isinstance(source, str):
         raise ScratchParseError("Nguon chuong trinh phai la chuoi UTF-8.")
     try:
@@ -101,14 +115,19 @@ def parse_program(source: str) -> ScratchProgram:
         name, separator, argument = value.partition(":")
         if not separator:
             raise _error(call, "Lenh phai co dang command:value.")
-        if name in NUMERIC_COMMANDS:
+        if name in numeric_commands:
+            spec = numeric_commands[name]
             try:
                 number = float(argument)
             except (ValueError, OverflowError) as error:
                 raise _error(call, f"{name} can tham so so.") from error
-            if not math.isfinite(number) or number <= 0:
-                raise _error(call, f"{name} can so huu han lon hon 0.")
-            events.append(CommandStep(name, number, NUMERIC_COMMANDS[name], current_block, statement.lineno))
+            below_minimum = number < spec.minimum if spec.include_minimum else number <= spec.minimum
+            if (not math.isfinite(number) or below_minimum
+                    or (spec.maximum is not None and number > spec.maximum)):
+                lower = ">=" if spec.include_minimum else ">"
+                upper = "" if spec.maximum is None else f" va <= {spec.maximum:g}"
+                raise _error(call, f"{name} can so huu han {lower} {spec.minimum:g}{upper} ({spec.unit}).")
+            events.append(CommandStep(name, number, spec.unit, current_block, statement.lineno))
         elif name == "led_strip":
             events.append(CommandStep(name, argument, "text", current_block, statement.lineno))
         else:

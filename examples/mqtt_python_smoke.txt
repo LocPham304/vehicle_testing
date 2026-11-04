@@ -1,0 +1,4 @@
+report_block("mqtt-forward-0.5s")
+robot.sendCmd("move_forward:0.5")
+report_block("mqtt-stop")
+robot.sendCmd("stop:")

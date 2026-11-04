@@ -9,6 +9,11 @@ Tay nâng/hạ dùng GPIO BCM 18, càng dùng GPIO BCM 12; cả hai nhận góc 
 
 ## Cấu trúc
 
+Xem [bài thử FE → MQTT → ConvertBlockToPython → chạy file Python](docs/MQTT_PYTHON_TEST.md)
+để dùng receiver Python mới, mặc định mô phỏng. Receiver này dùng riêng với
+`python3 -m vehicle_testing.connections.mqtt.python_receiver`; không phải runner
+Scratch cũ được mô tả bên dưới.
+
 Xem [bảng lệnh chạy qua cả bốn phương thức](docs/RUN_COMMANDS.md) để mở receiver
 trên Pi và gửi kịch bản từ laptop hoặc FE/BE.
 
