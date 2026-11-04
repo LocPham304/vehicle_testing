@@ -104,8 +104,10 @@ FE nhờ Windows Local Helper dò TCP 50000; Helper kết nối
 Lệnh `--dry-run` mô phỏng khi nhận `EXEC`, phù hợp test kết nối, không làm xe chạy.
 Đổi sang `--run` để chạy motor/LED thật.
 Không có cờ chỉ preview. Upload không tự chạy; cần gói `EXEC` riêng, mỗi upload
-chỉ chạy một lần. Ngắt kết nối điều khiển xóa bản chờ/yêu cầu dừng; các kết nối
-dò xe độc lập. Xem [WebSocket](WIFI_WEBSOCKET.md) về identify và ACK.
+chỉ chạy một lần. EXEC kèm code có thể chạy ngay không cần Upload riêng.
+Đóng socket không xóa code hoặc dừng worker; Upload/EXEC có thể dùng kết nối khác nhau.
+Gửi `{"action":"stop","uuid":"robot-003"}` hoặc Ctrl+C tại Pi để yêu cầu dừng.
+Code giữ trong RAM, mất khi restart script. Xem [WebSocket](WIFI_WEBSOCKET.md) về identify và ACK.
 
 ### UDP broadcast cũ — không phải WebSocket
 

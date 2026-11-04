@@ -207,6 +207,6 @@ class DeviceIdentityTests(TestCase):
                 else:
                     self.assertIsNone(upload)
                     self.assertIsNone(execute)
-                    self.assertIsNone(server.owner)
+                    self.assertIsNone(server.receiver.current_program)
             finally:
                 server.close()

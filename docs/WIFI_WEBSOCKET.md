@@ -130,12 +130,13 @@ Pi kiểm tra toàn bộ code bằng parser/validator hiện có, lưu chương 
 thực thi trong cùng yêu cầu. Không dùng `eval`/`exec` để chạy Python tùy ý.
 `--dry-run` mô phỏng, `--run` chạy phần cứng, mặc định chỉ preview.
 Code mới sai thì không chạy lại chương trình cũ; đang thực thi thì từ chối
-chương trình mới. Vẫn kiểm tra đúng UUID và một kết nối điều khiển.
+chương trình mới. Vẫn kiểm tra đúng UUID và chỉ cho phép một worker chạy tại một thời điểm.
 
 FE phải gửi code thật, không gửi `payload:""` nếu chưa Upload. Chuỗi rỗng vẫn
 có nghĩa chạy bản đã Upload; Pi không tự đọc được các block đang nằm trên FE.
-Kết nối mới có thể gửi EXEC kèm code ngay từ message đầu tiên. Giữ socket mở
-trong suốt lúc chạy; đóng kết nối điều khiển sẽ yêu cầu dừng và xóa chương trình.
+Kết nối mới có thể gửi EXEC kèm code ngay từ message đầu tiên. FE có thể đóng
+socket sau yêu cầu; worker tại Pi tiếp tục chạy độc lập tới khi xong, lỗi, nhận STOP
+hoặc server bị dừng. Mất kết nối mạng không còn tự dừng xe.
 
 ### Luồng hai bước Upload rồi EXEC
 
@@ -147,7 +148,8 @@ ws.send(JSON.stringify({
   action: "upload", uuid: "robot-003",
   payload: 'report_block("block-1")\nrobot.sendCmd("move_forward:5")\n'
 }));
-// Giữ nguyên ws đang mở; chỉ gửi EXEC sau khi Pi xác nhận upload thành công.
+// Chỉ gửi EXEC sau khi Pi xác nhận upload thành công.
+// Có thể dùng ws này hoặc đóng nó rồi mở một WebSocket mới để gửi EXEC.
 ws.send(JSON.stringify({action: "exec", uuid: "robot-003", payload: ""}));
 ```
 
@@ -161,7 +163,7 @@ ws.send(JSON.stringify({
 ws.send(JSON.stringify({type: "EXEC", uuid: "robot-003", code: ""}));
 ```
 
-Với luồng hai bước, UPLOAD và EXEC phải cùng kết nối, đúng UUID. Upload chỉ kiểm tra/lưu chờ, không
+Với luồng hai bước, UPLOAD và EXEC có thể khác kết nối nhưng phải đúng UUID. Upload chỉ kiểm tra/lưu chờ, không
 tự chạy; mỗi Upload hợp lệ cho phép một EXEC. Parser không eval/exec Python tùy
 ý, hiện hỗ trợ tiến/lùi, quay và LED. Chưa có bộ đọc XML Blockly trực tiếp.
 
@@ -180,14 +182,35 @@ chứng minh Pi đã kiểm tra và lưu chương trình.
 
 EXEC trả `status:"preview"` ở chế độ mặc định, hoặc `status:"accepted"` khi đã
 bật runner. `accepted` chưa có nghĩa xe đã chạy xong. Các block/trạng thái hoàn
-tất hiện ghi ở Pi; chưa thống nhất protocol sự kiện hoàn tất/Dừng với FE.
+tất hiện ghi ở Pi, chưa tự đẩy về FE. Đã hỗ trợ yêu cầu STOP/STATUS như bên dưới.
 
-Một kết nối Upload giữ quyền điều khiển tới khi nó ngắt; kết nối khác vẫn có
-thể Identify nhưng không thay code/chạy xe. Ngắt kết nối điều khiển xóa bản chờ
-và hủy worker. Kết nối mới cần Upload lại. Ctrl+C dừng server và dọn worker.
-Với luồng hai bước, FE không được đóng socket Upload rồi mở socket khác cho
-EXEC rỗng. Với cả hai luồng, không đóng socket ngay sau khi gửi EXEC hoặc vừa
-nhận `status:"accepted"`, vì đây chưa phải trạng thái hoàn tất.
+### Vòng đời chương trình và STOP
+
+Mỗi kết nối chỉ mang yêu cầu/phản hồi; chương trình thuộc tiến trình Pi, không
+thuộc một socket. Đóng socket, lỗi gửi ACK hoặc một kết nối Identify mới không
+xóa bản chờ và không hủy worker. Cách này tương thích với FE mở–gửi–đóng mỗi lần.
+Code chỉ lưu trong RAM, không ghi file và mất khi restart script/Pi.
+
+Không còn quyền điều khiển gắn với một kết nối: khi rảnh, Upload hợp lệ mới nhất
+đúng UUID thay bản chờ trước đó. Upload hoặc EXEC kèm code mới không hợp lệ sẽ
+xóa bản chờ cũ để tránh chạy nhầm. Khi worker đang chạy, Upload/EXEC mới bị từ chối,
+không xếp hàng hoặc làm gián đoạn chương trình hiện tại. Mỗi Upload cho phép một
+EXEC; chạy lại cần Upload mới hoặc EXEC kèm code.
+
+Có thể gửi từ một WebSocket mới, vẫn phải đúng UUID:
+
+```json
+{"action":"stop","uuid":"robot-003"}
+{"action":"status","uuid":"robot-003"}
+```
+
+STOP yêu cầu worker dừng, xóa bản chờ và trả `status:"stopping"` nếu worker còn chạy,
+hoặc `status:"idle"` nếu đang rảnh. STOP là yêu cầu hủy hợp tác; log `stopped` xuất hiện
+khi worker đã xử lý yêu cầu, không coi ACK `stopping` là đã dừng xong.
+STATUS trả `status:"executing"`/`"idle"`, `uploaded` (còn bản chờ EXEC hay không),
+và `mode:"preview"`/`"dry-run"`/`"hardware"`. Dạng cũ `type:"STOP"`/`type:"STATUS"`
+cũng được nhận. Identify vẫn không cần UUID; các lệnh điều khiển luôn phải khớp UUID.
+Ctrl+C dừng server, yêu cầu hủy worker và chờ dọn tài nguyên.
 
 `WS RX RAW` chỉ in 200 ký tự đầu và có nhãn `log rut gon` nếu message dài hơn;
 đây là giới hạn hiển thị log, không cắt dữ liệu đưa vào parser. Upload thành

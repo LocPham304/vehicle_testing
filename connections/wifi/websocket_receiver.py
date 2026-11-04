@@ -2,9 +2,11 @@
 
 Listen on 0.0.0.0:50000. Answer action=identify with identify_response, UUID
 and deviceName for LAN discovery. Preview by default; --dry-run simulates UPLOAD/EXEC;
---run enables the shared hardware runner. Discovery never claims control.
+--run enables the shared hardware runner. Requests don't own the execution lifetime.
 Use --setup once to save this Pi's registered UUID/name, then start without identity flags.
 FE action=exec with code in payload validates and runs without a separate upload.
+Uploads remain in RAM and execution continues after a client disconnects.
+Use action=stop or shut down the server to cancel execution.
 """
 
 import argparse
@@ -46,7 +48,7 @@ def control_fields(payload):
     if "type" in payload:
         return payload.get("type"), payload.get("code")
     action = payload.get("action")
-    kind = ({"upload": "UPLOAD", "exec": "EXEC"}.get(action.lower(), action)
+    kind = ({"upload": "UPLOAD", "exec": "EXEC", "stop": "STOP", "status": "STATUS"}.get(action.lower(), action)
             if isinstance(action, str) else action)
     return kind, payload.get("payload")
 
@@ -57,14 +59,13 @@ def has_exec_code(payload, kind, code):
 
 
 class WebSocketReceiver:
-    """Filter UUID, retain one upload, execute once, reset on disconnect."""
+    """Own one in-memory upload and worker independently of client sockets."""
 
     def __init__(self, device_id, *, executor=None, mode="preview"):
         validate_device_id(device_id)
         self.device_id = device_id
         self.mode = mode
         self.current_program = None
-        self.connected = False
         self.had_error = False
         self.interrupted = False
         self._armed = self._closed = False
@@ -76,19 +77,16 @@ class WebSocketReceiver:
         logger.info("WS EXECUTION EVENT: %r (log tai Pi)", event)
 
     def _reset(self):
-        self.connected = False
         self.current_program = None
         self._armed = False
         self.session.reset()
 
     def on_open(self, connection):
         with self._lock:
-            self._reset()
             if self._closed:
                 return
-            self.connected = True
         logger.info("WS CONNECTED | UUID=%s | mode=%s.", self.device_id, self.mode)
-        logger.info("Nhan truc tiep UPLOAD/EXEC tu ket noi FE dang dieu khien.")
+        logger.info("Nhan UPLOAD/EXEC/STOP; dong socket khong xoa code hoac dung worker.")
 
     def on_message(self, connection, message):
         # repr escapes terminal control characters; truncate before formatting.
@@ -99,8 +97,8 @@ class WebSocketReceiver:
             return self._handle_message(message)
 
     def _handle_message(self, message):
-        if not self.connected or self._closed:
-            return {"ok": False, "error": "WebSocket da ngat."}
+        if self._closed:
+            return {"ok": False, "error": "Receiver da dung."}
         if not isinstance(message, str):
             logger.warning("Bo qua frame binary; hop dong FE da cung cap la JSON text.")
             return {"ok": False, "error": "Can JSON text."}
@@ -117,6 +115,14 @@ class WebSocketReceiver:
             logger.info("Bo qua payload khong dung UUID=%s.", self.device_id)
             return None
         kind, code = control_fields(payload)
+        if kind == "STOP":
+            self._reset()
+            reply = self.session.dispatch({"action": "stop"})
+            logger.info("WS STOP UUID=%s: %s; da xoa ban cho.", self.device_id, reply)
+            return reply
+        if kind == "STATUS":
+            return {**self.session.dispatch({"action": "status"}),
+                    "uploaded": self._armed, "mode": self.mode}
         if kind == "EXEC":
             if has_exec_code(payload, kind, code):
                 reply = self._prepare_program(code, inline=True)
@@ -169,7 +175,7 @@ class WebSocketReceiver:
             self.had_error = True
             if isinstance(error, KeyboardInterrupt):
                 self.interrupted = True
-            self._reset()
+                self._reset()
         if self.interrupted:
             logger.info("WS INTERRUPTED: dung theo Ctrl+C, khong ket noi lai.")
         else:
@@ -177,11 +183,11 @@ class WebSocketReceiver:
 
     def on_close(self, connection, status, reason):
         self.disconnect()
-        logger.info("WS CLOSED: code=%r, reason=%r; da xoa ban cho, yeu cau dung worker.", status, reason)
+        logger.info("WS CLOSED: code=%r, reason=%r; giu code va worker tai Pi.", status, reason)
 
     def disconnect(self):
-        with self._lock:
-            self._reset()
+        # Transport lifetime doesn't own the pending program or worker.
+        logger.info("WS DISCONNECTED: giu code va worker; gui STOP de dung.")
 
     def close(self):
         with self._lock:
@@ -191,14 +197,13 @@ class WebSocketReceiver:
 
 
 class RobotWebSocketServer:
-    """Allow concurrent discovery probes and one active control connection."""
+    """Accept independent requests on any socket; serialize access to one worker."""
 
     def __init__(self, device_id, *, name=None, executor=None, mode="preview"):
         self.name = name if name is not None else f"Robot {device_id}"
         validate_device_name(self.name)
         self.device_id = device_id
         self.receiver = WebSocketReceiver(device_id, executor=executor, mode=mode)
-        self.owner = None
         self._lock = RLock()
         self._connections = set()
         self._closed = False
@@ -244,13 +249,6 @@ class RobotWebSocketServer:
                 return {"action": "identify_response", "uuid": self.device_id, "deviceName": self.name}
             if payload.get("uuid") != self.device_id:
                 return None
-            if self.owner is None:
-                if kind != "UPLOAD" and not has_exec_code(payload, kind, code):
-                    return {"ok": False, "error": "Can UPLOAD hoac gui EXEC kem code tren ket noi nay."}
-                self.owner = connection
-                self.receiver.on_open(connection)
-            elif self.owner is not connection:
-                return {"ok": False, "error": "Robot dang co ket noi dieu khien khac."}
             return self.receiver.on_message(connection, message)
 
     def handle_connection(self, connection):
@@ -275,9 +273,6 @@ class RobotWebSocketServer:
                         getattr(connection, "close_reason", None))
             with self._lock:
                 self._connections.discard(connection)
-                if self.owner is connection:
-                    self.receiver.disconnect()
-                    self.owner = None
 
     def close(self):
         with self._lock:
@@ -355,6 +350,7 @@ def main(argv=None):
                 compression=None) as server:
             logger.info("WS SERVER LISTENING: %s:%d/stem | UUID=%s | name=%r | mode=%s.",
                         args.host, args.port, identity.uuid, controller.name, controller.receiver.mode)
+            logger.info("WS REQUEST MODE: code luu trong RAM; dong socket khong dung EXEC. Gui STOP hoac Ctrl+C de dung.")
             logger.info("Windows Local Helper ket noi ws://<IP_PI>:%d/stem, gui action=identify; "
                         "xem IP Pi bang hostname -I. Ctrl+C de dung.", args.port)
             try:

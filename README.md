@@ -150,18 +150,20 @@ không chạy trên Pi; chức năng quét của Helper và hiển thị FE thu�
 Identify không cần UUID để tìm xe; nếu gửi kèm UUID thì chỉ xe khớp mới trả lời.
 
 Nhận JSON `{"action":"upload","uuid":"robot-003","payload":"<code>"}`, sau đó
-`{"action":"exec","uuid":"robot-003","payload":""}` trên cùng WebSocket.
+`{"action":"exec","uuid":"robot-003","payload":""}` trên cùng hoặc một WebSocket mới.
 Hoặc nút Chạy Code gửi luôn `{"action":"exec","uuid":"robot-003","payload":"<code>"}`
 để Pi kiểm tra và chạy ngay, không cần Upload riêng. FE phải gửi code hiện tại
-và giữ socket mở trong lúc chạy; `payload:""` không chứa chương trình mới.
+trong payload; `payload:""` chỉ chạy bản đã Upload, không chứa chương trình mới.
 Vẫn hỗ trợ dạng `type:"UPLOAD"`/`type:"EXEC"` và trường `code` cũ.
-FE cần chờ phản hồi `status:"uploaded"` trước khi báo Upload thành công và
-giữ socket để gửi EXEC; đóng socket sẽ xóa chương trình chờ.
+FE cần chờ phản hồi `status:"uploaded"` trước khi báo Upload thành công.
+Code được giữ trong RAM của Pi qua các lần đóng/mở socket; restart script sẽ mất.
 Upload không tự chạy; mỗi upload chỉ chạy một lần. `--dry-run` mô phỏng,
 `--run` điều khiển motor/LED thật; không có cờ là chỉ preview.
-Ngắt kết nối điều khiển xóa bản chờ và yêu cầu dừng; ngắt kết nối dò xe không
-ảnh hưởng xe đang điều khiển. Một kết nối giữ quyền điều khiển; server trả kết
-quả `ok`/`status` cho Upload/Exec. Xem [hướng dẫn WebSocket](docs/WIFI_WEBSOCKET.md).
+Đóng socket không dừng worker. Gửi `{"action":"stop","uuid":"robot-003"}`
+qua kết nối mới hoặc Ctrl+C tại Pi để yêu cầu dừng và xóa bản chờ. Khi đang chạy,
+Pi từ chối Upload/EXEC mới; khi rảnh, Upload hợp lệ mới thay bản chờ cũ.
+Server trả kết quả `ok`/`status` cho từng yêu cầu và hỗ trợ `action:"status"`.
+Xem [hướng dẫn WebSocket](docs/WIFI_WEBSOCKET.md).
 
 ### Wi-Fi UDP cũ — giữ để đối chiếu
 
