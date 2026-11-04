@@ -79,8 +79,9 @@ COMMANDS = {
     "move_backward": CommandSpec(_number(0, 500, include_lo=False), "motor", "giây"),
     "turn_left":     CommandSpec(_number(0, 360, include_lo=False), "motor", "độ"),
     "turn_right":    CommandSpec(_number(0, 360, include_lo=False), "motor", "độ"),
-    "hand_up":       CommandSpec(_number(0, 90), "hand", "độ, góc tuyệt đối"),
-    "hand_down":     CommandSpec(_number(0, 90), "hand", "độ, góc tuyệt đối"),
+    # Tay nhận cả 0° và 90°; giá trị ngoài khoảng này bị từ chối.
+    "hand_up":       CommandSpec(_number(0, 90, include_lo=True), "hand", "độ, góc tuyệt đối"),
+    "hand_down":     CommandSpec(_number(0, 90, include_lo=True), "hand", "độ, góc tuyệt đối"),
     # robot_led_strip và robot_led_strip_hello_world cùng sinh led_strip:<text>.
     "led_strip":     CommandSpec(_text(64), "matrix", "chuỗi"),
     # Generator FE giữ tiền tố robot_ cho bốn lệnh mặt LED, không có tham số.

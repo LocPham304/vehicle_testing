@@ -22,6 +22,7 @@ from vehicle_testing.runtime.runner import ExecutionCancelled
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]
+PROGRAM_HISTORY_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,59 @@ class PythonProgram:
     path: Path
     command_count: int
     resources: tuple[str, ...]
+
+
+def _write_program_pair(original, target, source, generated):
+    """Stage both files before publishing them; roll back an incomplete commit."""
+    if original.exists() or target.exists():
+        raise FileExistsError('ID chương trình đã tồn tại; không ghi đè bản cũ.')
+    with TemporaryDirectory(prefix='.upload-', dir=original.parent) as directory:
+        staged_source = Path(directory) / original.name
+        staged_python = Path(directory) / target.name
+        staged_source.write_text(source, encoding='utf-8')
+        staged_python.write_text(generated, encoding='utf-8')
+        committed = []
+        try:
+            staged_source.replace(original)
+            committed.append(original)
+            staged_python.replace(target)
+            committed.append(target)
+        except BaseException:
+            for path in committed:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logger.exception('Không xóa được file upload chưa hoàn tất: %s', path)
+            raise
+
+
+def _prune_program_history(folder, current_id):
+    """Keep the incoming upload and newest older pairs; ignore unrelated files."""
+    pairs = []
+    for target in folder.glob('*.py'):
+        program_id = target.stem
+        if len(program_id) != 32 or any(char not in '0123456789abcdef' for char in program_id):
+            continue
+        original = folder / f'{program_id}.fe.txt'
+        if (target.is_symlink() or original.is_symlink()
+                or not target.is_file() or not original.is_file()):
+            continue
+        modified = max(target.stat().st_mtime_ns, original.stat().st_mtime_ns)
+        pairs.append((modified, program_id, original, target))
+    pairs.sort(reverse=True)
+    kept = {current_id}  # Always keep this upload, even if the clock moved backwards.
+    for _, program_id, original, target in pairs:
+        if program_id in kept:
+            continue
+        if len(kept) < PROGRAM_HISTORY_LIMIT:
+            kept.add(program_id)
+            continue
+        try:
+            target.unlink()
+            original.unlink()
+            logger.info('HISTORY | đã xóa chương trình cũ %s', program_id)
+        except OSError:
+            logger.warning('Không dọn được chương trình cũ %s', program_id, exc_info=True)
 
 
 def prepare_program(source, program_dir):
@@ -46,8 +100,13 @@ def prepare_program(source, program_dir):
     program_id = uuid.uuid4().hex
     original = folder / f'{program_id}.fe.txt'
     target = folder / f'{program_id}.py'
-    original.write_text(source, encoding='utf-8')
-    target.write_text(generated, encoding='utf-8')
+    _write_program_pair(original, target, source, generated)
+    # The MQTT receiver holds its lock and rejects uploads throughout execution.
+    # Pruning runs only after both new files are ready, never on conversion/write failure.
+    try:
+        _prune_program_history(folder, program_id)
+    except OSError:
+        logger.warning('Không đọc được lịch sử để dọn; chương trình mới đã lưu đủ.', exc_info=True)
     logger.info('CONVERT OK | file=%s\n%s', target, generated)
     return PythonProgram(program_id, original, target,
                          sum(isinstance(event, Command) for event in events), get_required_resources(events))

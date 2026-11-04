@@ -84,6 +84,26 @@ hoặc đổi môi trường `.venv`. Cách chạy `python3 -m ...` từ thư m�
 
 Chương trình mẫu để đối chiếu: `examples/mqtt_python_smoke.txt`.
 
+### Giới hạn lịch sử upload
+
+`received_programs/` tự giữ **ba chương trình gần nhất**, mỗi chương trình gồm
+`<id>.fe.txt` và `<id>.py`: tối đa sáu file của các cặp chương trình hoàn chỉnh.
+Muốn đổi số bản giữ lại, sửa `PROGRAM_HISTORY_LIMIT = 3` trong
+`runtime/python_program.py`. Tên file vẫn dùng ID riêng cho từng lần upload.
+
+- Mã được kiểm tra và convert trước. Hai file mới được ghi đủ vào thư mục tạm,
+  sau đó mới chuyển ra `received_programs/` và dọn các cặp cũ nhất.
+- Lỗi parse, convert hoặc ghi file không dọn lịch sử cũ. Nếu chỉ chuyển được
+  một trong hai file mới, chương trình cố gắng xóa file đó trước khi báo lỗi.
+- Receiver chặn upload trong lúc chạy, nên không dọn hay thay file đang dùng.
+- Những cặp file đã tích lũy từ phiên bản trước được dọn sau lần upload thành
+  công tiếp theo; chỉ khởi động lại receiver chưa kích hoạt dọn lịch sử.
+- Chỉ dọn cặp file có ID gồm 32 ký tự hex thường do receiver tạo. File tên khác,
+  thư mục, symlink và file không đủ cặp được giữ nguyên.
+- Nếu hệ điều hành không cho xóa file cũ, log có cảnh báo `Không dọn được...`;
+  bản mới vẫn sẵn sàng chạy nhưng số file có thể vượt giới hạn đến khi xử lý
+  được lỗi quyền truy cập.
+
 ## 4. Chuyển sang thử xe thật
 
 Sau khi mô phỏng đã qua, nhấn `Ctrl+C` đóng receiver mô phỏng. Trong lần thử đầu,

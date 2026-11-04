@@ -85,11 +85,16 @@ class PythonPipelineTests(unittest.TestCase):
             receiver = self.receiver_class('test-device', program_dir=directory, executor=execute)
             self.addCleanup(receiver.close)
             client = self.client()
-            receiver.on_message(client, None, self.message(receiver.topic_code, 'robot.sendCmd("move_forward:1")'))
+            for index in range(3):
+                receiver.on_message(client, None, self.message(
+                    receiver.topic_code, f'robot.sendCmd("move_forward:{index + 1}")'))
+            files_before_run = {path.name: path.read_bytes() for path in Path(directory).iterdir()}
             receiver.on_message(client, None, self.message(receiver.topic_execute, 'execute'))
             self.assertTrue(started.wait(2))
             receiver.on_message(client, None, self.message(receiver.topic_code, 'robot.sendCmd("move_forward:2")'))
             self.assertIsNone(receiver.current_program)
+            self.assertEqual({path.name: path.read_bytes() for path in Path(directory).iterdir()},
+                             files_before_run)
             receiver.on_message(client, None, self.message(receiver.topic_stop, 'stop'))
             self.assertTrue(receiver.wait_for_execution(2))
 

@@ -80,7 +80,7 @@ Chỉ thêm một dòng vào `COMMANDS` trong `ConvertBlockToPython.py`, ví d�
 ```python
 COMMANDS = {
     # ...
-    "hand_up": CommandSpec(_number(0, 90), "hand", "độ, góc tuyệt đối"),
+    "hand_up": CommandSpec(_number(0, 90, include_lo=True), "hand", "độ, góc tuyệt đối"),
 }
 ```
 
