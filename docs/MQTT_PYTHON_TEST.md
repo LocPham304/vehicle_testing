@@ -56,6 +56,16 @@ Mặc định không có `--run` cũng là mô phỏng. Giữ terminal mở, ch�
 subscribe thành công. Chế độ này chạy file Python thật với SDK mô phỏng; không
 mở GPIO/I²C và bỏ thời gian chờ của các hành động.
 
+Cũng có thể chạy trực tiếp ngay trong thư mục chứa file, ví dụ trên Pi:
+
+```bash
+cd /home/pi/vehicle_testing/connections/mqtt
+python3 python_receiver.py --broker IP_BROKER_CUA_BE --device-id UUID_ROBOT_TREN_FE --dry-run
+```
+
+Receiver tự xác định thư mục package từ vị trí file. Không cần đặt `PYTHONPATH`
+hoặc đổi môi trường `.venv`. Cách chạy `python3 -m ...` từ thư mục cha vẫn giữ nguyên.
+
 ## 3. Thao tác trên FE
 
 1. Mở project, chọn đúng robot và kênh **MQTT**.

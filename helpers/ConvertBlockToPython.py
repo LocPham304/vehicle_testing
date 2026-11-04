@@ -5,12 +5,23 @@ import ast
 import io
 import math
 import tokenize
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 class BlockConvertError(ValueError):
     """Code từ FE không hợp lệ."""
+
+
+@dataclass(frozen=True)
+class CommandSpec:
+    validate: Callable[[str, str, int], float | str | None]
+    resource: str | None = None
+    unit: str = ""
+
+
 @dataclass
 class Command:
     name: str            # vd: "move_forward"
@@ -20,7 +31,7 @@ class Command:
 
     @property
     def resource(self) -> str | None:
-        return COMMAND_RESOURCES[self.name]
+        return COMMANDS[self.name].resource
 
 
 @dataclass
@@ -62,26 +73,39 @@ def _none(raw, name, line):
     return None
 
 
-# ---- BẢNG LỆNH TỰ ĐỊNH NGHĨA: thêm block vào đây và COMMAND_RESOURCES
+# ---- BẢNG LỆNH TỰ ĐỊNH NGHĨA: thêm block tại một chỗ này.
 COMMANDS = {
-    "move_forward":  _number(0, 500, include_lo=False),   # giây
-    "move_backward": _number(0, 500, include_lo=False),   # giây
-    "turn_left":     _number(0, 360, include_lo=False),   # độ
-    "turn_right":    _number(0, 360, include_lo=False),   # độ
-    "hand_up":       _number(0, 90),                     # góc đích tuyệt đối
-    "led_strip":     _text(64),
-    "stop":          _none,
+    "move_forward":  CommandSpec(_number(0, 500, include_lo=False), "motor", "giây"),
+    "move_backward": CommandSpec(_number(0, 500, include_lo=False), "motor", "giây"),
+    "turn_left":     CommandSpec(_number(0, 360, include_lo=False), "motor", "độ"),
+    "turn_right":    CommandSpec(_number(0, 360, include_lo=False), "motor", "độ"),
+    "hand_up":       CommandSpec(_number(0, 90), "hand", "độ, góc tuyệt đối"),
+    "hand_down":     CommandSpec(_number(0, 90), "hand", "độ, góc tuyệt đối"),
+    # robot_led_strip và robot_led_strip_hello_world cùng sinh led_strip:<text>.
+    "led_strip":     CommandSpec(_text(64), "matrix", "chuỗi"),
+    # Generator FE giữ tiền tố robot_ cho bốn lệnh mặt LED, không có tham số.
+    "robot_led_matrix_smile":   CommandSpec(_none, "matrix"),
+    "robot_led_matrix_cry":     CommandSpec(_none, "matrix"),
+    "robot_led_matrix_normal":  CommandSpec(_none, "matrix"),
+    "robot_led_matrix_excited": CommandSpec(_none, "matrix"),
+    "stop":          CommandSpec(_none),
 }
 
-COMMAND_RESOURCES = {
-    "move_forward": "motor",
-    "move_backward": "motor",
-    "turn_left": "motor",
-    "turn_right": "motor",
-    "led_strip": "matrix",
-    "hand_up": "hand",
-    "stop": None,  # Dừng chung; không yêu cầu mở một thiết bị mới.
-}
+
+class _ResourceView(Mapping):
+    """Mọi giá trị đều lấy trực tiếp từ COMMANDS."""
+
+    def __getitem__(self, name):
+        return COMMANDS[name].resource
+
+    def __iter__(self):
+        return iter(COMMANDS)
+
+    def __len__(self):
+        return len(COMMANDS)
+
+
+COMMAND_RESOURCES = _ResourceView()
 
 
 def _strip_call_indentation(source):
@@ -189,11 +213,10 @@ def parse_commands(source: str, keep_block_ids: bool = False) -> list[Command | 
         name = name.strip()
         if name not in COMMANDS:
             raise BlockConvertError(f"Dòng {line_no}: lệnh không hỗ trợ: {name!r}")
-        if name not in COMMAND_RESOURCES:
-            raise BlockConvertError(f"Dòng {line_no}: cần khai báo nhóm thiết bị cho {name!r}.")
-        if not separator and COMMANDS[name] is not _none:
+        spec = COMMANDS[name]
+        if not separator and spec.validate is not _none:
             raise BlockConvertError(f"Dòng {line_no}: lệnh phải có dạng tên:giá_trị.")
-        arg = COMMANDS[name](raw_arg, name, line_no)
+        arg = spec.validate(raw_arg, name, line_no)
         commands.append(Command(name, arg, line_no, last_block_id))
 
     return commands

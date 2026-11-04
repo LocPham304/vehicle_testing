@@ -1,6 +1,7 @@
 """Review the standalone converter using a fake SDK, never robot hardware."""
 
 from pathlib import Path
+from dataclasses import FrozenInstanceError
 import sys
 import subprocess
 import tempfile
@@ -47,6 +48,57 @@ class ConverterRegressionTests(unittest.TestCase):
         self.assertEqual(set(namespace["REQUIRED_RESOURCES"]), {"hand", "motor", "matrix"})
         commands = converter.parse_commands('robot.sendCmd("move_forward:2")')
         self.assertEqual(commands[0].resource, "motor")
+
+    def test_all_simulator_robot_blocks_convert_with_the_fe_command_names(self):
+        # Match BlockInitializer generators: the two text blocks share led_strip;
+        # face commands retain the robot_ prefix and have no argument/colon.
+        payloads = [
+            'move_forward:0.5', 'move_backward:0.5', 'turn_left:90', 'turn_right:90',
+            'hand_up:90', 'hand_down:0', 'led_strip:Hello World', 'led_strip:văn bản',
+            'robot_led_matrix_smile', 'robot_led_matrix_cry',
+            'robot_led_matrix_normal', 'robot_led_matrix_excited',
+        ]
+        source = '\n'.join(
+            f'report_block("block-{index}") robot.sendCmd({payload!r})'
+            for index, payload in enumerate(payloads)
+        )
+        calls, namespace = self.execute_with_fake_sdk(source)
+        actions = [call for call in calls if call[0] != 'report_block']
+        self.assertEqual(actions, [
+            ('move_forward', 0.5), ('move_backward', 0.5),
+            ('turn_left', 90.0), ('turn_right', 90.0),
+            ('hand_up', 90.0), ('hand_down', 0.0),
+            ('led_strip', 'Hello World'), ('led_strip', 'văn bản'),
+            ('robot_led_matrix_smile',), ('robot_led_matrix_cry',),
+            ('robot_led_matrix_normal',), ('robot_led_matrix_excited',), ('stop',),
+        ])
+        self.assertEqual([call for call in calls if call[0] == 'report_block'],
+                         [('report_block', f'block-{index}') for index in range(12)])
+        self.assertEqual(namespace['REQUIRED_RESOURCES'], ('motor', 'hand', 'matrix'))
+
+    def test_hand_down_accepts_absolute_targets_and_rejects_invalid_angles(self):
+        for value in ('0', '45.5', '90'):
+            with self.subTest(value=value):
+                events = converter.parse_commands(f'robot.sendCmd("hand_down:{value}")')
+                self.assertEqual(events[0].arg, float(value))
+                self.assertEqual(events[0].resource, 'hand')
+        for payload in ('hand_down', 'hand_down:', 'hand_down:-1', 'hand_down:91',
+                        'hand_down:nan', 'hand_down:inf', 'hand_down:abc'):
+            with self.subTest(payload=payload), self.assertRaisesRegex(
+                    converter.BlockConvertError, 'Dòng 2'):
+                converter.parse_commands(f'report_block("down")\nrobot.sendCmd({payload!r})')
+
+    def test_face_commands_take_no_argument_and_require_only_matrix(self):
+        for face in ('smile', 'cry', 'normal', 'excited'):
+            name = f'robot_led_matrix_{face}'
+            for suffix in ('', ':'):
+                with self.subTest(name=name, suffix=suffix):
+                    calls, namespace = self.execute_with_fake_sdk(
+                        f'robot.sendCmd({(name + suffix)!r})')
+                    self.assertEqual(calls, [(name,), ('stop',)])
+                    self.assertEqual(namespace['REQUIRED_RESOURCES'], ('matrix',))
+            with self.assertRaisesRegex(converter.BlockConvertError, 'không có tham số'):
+                converter.parse_commands(f'robot.sendCmd("{name}:1")')
 
     def test_adjacent_calls_comments_and_original_line_for_errors(self):
         calls, _ = self.execute_with_fake_sdk(
@@ -121,12 +173,35 @@ class ConverterRegressionTests(unittest.TestCase):
         calls, _ = self.execute_with_fake_sdk(source)
         self.assertEqual(calls, [("report_block", "start"), ("report_block", "end"), ("stop",)])
 
-    def test_custom_command_needs_only_validator_and_resource_registration(self):
-        with patch.dict(converter.COMMANDS, {"hand_down": converter._number(0, 90)}), \
-                patch.dict(converter.COMMAND_RESOURCES, {"hand_down": "hand"}):
-            calls, namespace = self.execute_with_fake_sdk('robot.sendCmd("hand_down:20")')
-        self.assertEqual(calls, [("hand_down", 20.0), ("stop",)])
+    def test_custom_command_needs_only_one_spec_registration(self):
+        spec = converter.CommandSpec(converter._number(0, 90), 'hand', 'độ, góc tuyệt đối')
+        self.assertNotIn('custom_hand', converter.COMMANDS)
+        with patch.dict(converter.COMMANDS, {"custom_hand": spec}):
+            calls, namespace = self.execute_with_fake_sdk('robot.sendCmd("custom_hand:20")')
+            self.assertEqual(converter.COMMAND_RESOURCES['custom_hand'], 'hand')
+        self.assertEqual(calls, [("custom_hand", 20.0), ("stop",)])
         self.assertEqual(namespace["REQUIRED_RESOURCES"], ("hand",))
+
+    def test_spec_contains_validation_resource_and_unit_and_is_frozen(self):
+        spec = converter.COMMANDS['move_forward']
+        self.assertIsInstance(spec, converter.CommandSpec)
+        self.assertEqual(spec.resource, 'motor')
+        self.assertEqual(spec.unit, 'giây')
+        self.assertEqual(spec.validate('0.5', 'move_forward', 1), 0.5)
+        with self.assertRaises(FrozenInstanceError):
+            spec.resource = 'hand'
+        with self.assertRaises(TypeError):
+            converter.COMMAND_RESOURCES['move_forward'] = 'hand'
+
+    def test_no_argument_spec_supports_optional_separator(self):
+        spec = converter.CommandSpec(converter._none, 'matrix')
+        with patch.dict(converter.COMMANDS, {'smile': spec}):
+            for source in ('robot.sendCmd("smile")', 'robot.sendCmd("smile:")'):
+                calls, namespace = self.execute_with_fake_sdk(source)
+                self.assertEqual(calls, [('smile',), ('stop',)])
+                self.assertEqual(namespace['REQUIRED_RESOURCES'], ('matrix',))
+            with self.assertRaises(converter.BlockConvertError):
+                converter.convert_block_to_python('robot.sendCmd("smile:1")')
 
 
 class HelperApiTests(unittest.TestCase):

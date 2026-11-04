@@ -75,31 +75,71 @@ mặc định giữ ID, tương ứng hành vi helper trước đó.
 
 ## Khai báo block mới
 
-Chỉ sửa hai bảng trong `ConvertBlockToPython.py`, ví dụ lệnh đã hỗ trợ:
+Chỉ thêm một dòng vào `COMMANDS` trong `ConvertBlockToPython.py`, ví dụ:
 
 ```python
 COMMANDS = {
     # ...
-    "hand_up": _number(0, 90),
-}
-COMMAND_RESOURCES = {
-    # ...
-    "hand_up": "hand",
+    "hand_up": CommandSpec(_number(0, 90), "hand", "độ, góc tuyệt đối"),
 }
 ```
+
+`CommandSpec` gộp hàm kiểm tra `validate`, nhóm thiết bị `resource` và đơn vị
+`unit`. `unit` là thông tin mô tả cho FE, không tự đổi đơn vị hay sửa giao diện.
+`COMMAND_RESOURCES` vẫn tồn tại dưới dạng view chỉ đọc cho code cũ; giá trị tự lấy
+từ `COMMANDS`, không cần thêm hay sửa một bảng thứ hai.
 
 Generator FE gửi `robot.sendCmd("hand_up:90")`. SDK nhận `robot.hand_up(90.0)`;
 SDK cần ánh xạ tiếp sang `HandController.hand_up(angle=degrees)`, không truyền
 90 vào vị trí tham số thời gian của driver. Đổi tên hiển thị block không ảnh
 hưởng converter nếu tên lệnh FE sinh vẫn khớp.
 
-| Lệnh | Tham số | Nhóm |
-| --- | --- | --- |
-| move_forward, move_backward | Giây, > 0 và <= 500 | motor |
-| turn_left, turn_right | Độ yêu cầu, > 0 và <= 360 | motor |
-| hand_up | Góc đích tuyệt đối 0–90°, không phải góc tăng thêm | hand |
-| led_strip | Chuỗi tối đa 64 ký tự, cho phép rỗng | matrix |
-| stop | Không tham số (`stop` hoặc `stop:`) | Không yêu cầu thiết bị mới |
+| Block trong simulator | Lệnh trong `robot.sendCmd(...)` | Tham số | Nhóm |
+| --- | --- | --- | --- |
+| `robot_move_forward` | `move_forward` | Giây, > 0 và <= 500 | motor |
+| `robot_move_backward` | `move_backward` | Giây, > 0 và <= 500 | motor |
+| `robot_turn_left` | `turn_left` | Độ, > 0 và <= 360 | motor |
+| `robot_turn_right` | `turn_right` | Độ, > 0 và <= 360 | motor |
+| `robot_hand_up` | `hand_up` | Góc đích tuyệt đối 0–90° | hand |
+| `robot_hand_down` | `hand_down` | Góc đích tuyệt đối 0–90° | hand |
+| `robot_led_strip`, `robot_led_strip_hello_world` | `led_strip` | Chuỗi tối đa 64 ký tự, cho phép rỗng | matrix |
+| `robot_led_matrix_smile` | `robot_led_matrix_smile` | Không tham số | matrix |
+| `robot_led_matrix_cry` | `robot_led_matrix_cry` | Không tham số | matrix |
+| `robot_led_matrix_normal` | `robot_led_matrix_normal` | Không tham số | matrix |
+| `robot_led_matrix_excited` | `robot_led_matrix_excited` | Không tham số | matrix |
+| Không có block tương ứng trong simulator | `stop` | Không tham số | Không yêu cầu thiết bị mới |
+
+Tên lệnh trên đối chiếu generator trong `stem_ide_be/.../bootstrap/BlockInitializer.java`;
+converter đọc tên lệnh trong chuỗi FE gửi, không đọc trực tiếp `block.type`.
+Hai block chữ cùng gửi `led_strip:...`, nên chỉ cần một định nghĩa trong `COMMANDS`.
+Bốn mặt LED giữ nguyên tiền tố `robot_`; chấp nhận dạng không dấu `:` hoặc có
+dấu `:` với tham số rỗng. Ví dụ:
+
+```python
+# FE gửi:
+report_block("down")
+robot.sendCmd("hand_down:0")
+report_block("smile")
+robot.sendCmd("robot_led_matrix_smile")
+
+# Phần thân Python được sinh:
+robot.report_block('down')
+robot.hand_down(0.0)
+robot.report_block('smile')
+robot.robot_led_matrix_smile()
+```
+
+Quy ước tay của helper là **góc đích tuyệt đối**: `hand_up:90` rồi `hand_down:0`
+là yêu cầu đi đến 90° rồi về 0°. `hand_down:90` vẫn là đích 90°, không tự trừ 90°.
+Simulator hiện cộng/trừ góc tương đối; việc thêm định nghĩa không thay đổi quy
+ước góc tuyệt đối đã dùng trên Pi. Tiến/lùi trên Pi vẫn tính bằng giây theo
+quy ước hiện tại, dù simulator dùng giá trị đó để đổi tọa độ.
+
+**Trạng thái thực thi:** các lệnh mới được kiểm tra bằng SDK giả để xác nhận
+chuyển đổi, thứ tự và nhóm thiết bị. `vehicle_testing/robot_sdk.py` hiện chưa có
+`hand_down()` và bốn hàm `robot_led_matrix_*()`; cần bổ sung các hàm này trước
+khi chạy chương trình chứa chúng qua receiver. Helper không tự vẽ emoji hay
+điều khiển servo. Chưa mở rộng biến, so sánh hoặc vòng lặp trong lượt này.
 
 `parse_commands(..., keep_block_ids=True)` trả `Command` và `BlockMarker` theo
 đúng thứ tự. `Command.resource` cho biết nhóm; `get_required_resources(events)`
@@ -111,7 +151,7 @@ trả các nhóm có dùng, không trùng lặp. Marker đứng riêng cũng đ�
 - Giữ nội dung chuỗi, kể cả ký tự phân dòng Unicode và lề trong literal nhiều dòng.
 - Chỉ nhận hai loại lời gọi cố định; không thực thi import, biểu thức, if/for.
 - Giới hạn nguồn 64 KiB, 1.000 câu lệnh; lỗi báo theo dòng gốc.
-- Từ chối lệnh chưa khai báo hoặc thiếu nhóm thiết bị, giá trị sai giới hạn.
+- Từ chối lệnh chưa khai báo hoặc có giá trị sai giới hạn.
 - File nguồn UTF-8/BOM được đọc đúng; không cho ghi đè chính file đầu vào.
 - Bản thân converter không nghe MQTT/WebSocket. Đường MQTT thử nghiệm dùng
   `connections/mqtt/python_receiver.py`, worker và SDK riêng; các receiver cũ

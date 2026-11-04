@@ -14,6 +14,11 @@ import sys
 from threading import Event
 import time
 
+# Direct script execution starts inside connections/mqtt, outside the package root.
+# Resolve from this file so the caller's working directory does not matter.
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from vehicle_testing.connections.mqtt.receiver import ScratchReceiver, create_client
 from vehicle_testing.runtime.python_program import prepare_program, execute_python_program
 

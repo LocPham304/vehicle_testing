@@ -3,6 +3,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 from threading import Event
 import types
@@ -101,6 +103,19 @@ class PythonPipelineTests(unittest.TestCase):
                 with self.assertRaises(ExecutionCancelled):
                     self.runtime.execute_python_program(program, dry_run=True, stop_event=stop)
                 launch.assert_not_called()
+
+    def test_receiver_runs_directly_from_its_directory_and_an_unrelated_directory(self):
+        script = Path(__file__).resolve().parents[1] / 'connections/mqtt/python_receiver.py'
+        with tempfile.TemporaryDirectory() as directory:
+            for cwd, path in ((script.parent, script.name), (Path(directory), str(script))):
+                with self.subTest(cwd=str(cwd)):
+                    result = subprocess.run(
+                        [sys.executable, '-I', '-B', '-X', 'utf8', path, '--help'],
+                        cwd=cwd, capture_output=True, text=True, encoding='utf-8', timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('--broker', result.stdout)
+                    self.assertIn('--dry-run', result.stdout)
 
     def test_child_timeout_is_reported_as_error_instead_of_done(self):
         with tempfile.TemporaryDirectory() as directory:
